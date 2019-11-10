@@ -7,7 +7,6 @@ from random import shuffle, random
 import datetime
 from enph353_gazebo.srv import GetLegalPlates, GetLegalPlatesResponse, SubmitPlate, SubmitPlateResponse
 
-
 class LicenseServer():
 
     def __init__(self):
