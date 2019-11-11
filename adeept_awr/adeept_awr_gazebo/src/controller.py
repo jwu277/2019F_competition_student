@@ -54,8 +54,9 @@ class AdeeptAWRController:
         self.__WAIT_TIME = 0.6 # can be tuned
         
         # white_border
+        self.__WHITE_PIXEL_THRESH = 3 * 0xF0 # threshold for sum of BGR values to be white
         self.__WHITE_BORDER_CUTOFF = 500 # tunable, image cutoff
-        self.__WHITE_BORDER_THRESH = 800 # tunable, number of pixels
+        self.__WHITE_BORDER_THRESH = 1000 # tunable, number of pixels
 
 
     def pub_vel_msg(self, lin, ang):
@@ -84,8 +85,7 @@ class AdeeptAWRController:
 
     def callback(self, msg):
 
-        print(rospy.get_time() - msg.header.stamp.secs)
-
+        #print(rospy.get_time() - msg.header.stamp.secs)
         img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
 
         # Waiting state
@@ -93,7 +93,7 @@ class AdeeptAWRController:
             self.wait()
             return
 
-        # TODO: remove initial wait
+        # TODO: remove initial wait (kept rn for testing)
         if self.__state_counter == -1:
 
             if rospy.get_time() - self.__timer >= 5.0:
@@ -106,23 +106,18 @@ class AdeeptAWRController:
             if self.white_border(img):
                 self.__state_counter += 1
                 self.reinit_state()
-                print("Hi")
                 return
             
             self.drive()
 
-            # TODO temp
-            # if rospy.get_time() - self.temp_time >= 0.1:
-            #     print("NICE")
-            #     self.pub_vel_msg(0, 0)
-            #     self.debug_img(img)
-        
         elif self.__state_counter == 1:
 
             if self.turn_complete():
-                self.__state_counter +=1
+                self.__state_counter += 1
                 self.reinit_state()
                 return
+            
+            self.turn()
         
         # TODO: complete
 
@@ -142,13 +137,11 @@ class AdeeptAWRController:
 
     # TODO: "pid" control
     def drive(self):
-        if not self.temp:
-            self.temp_time = rospy.get_time()
-            self.temp = True
         self.pub_vel_msg(1, 0)
 
+    # TODO: implement smarter turning if needed
     def turn(self):
-        pass
+        self.pub_vel_msg(0, 1)
     
     def wait(self):
 
@@ -165,24 +158,25 @@ class AdeeptAWRController:
 
     def white_border(self, img):
 
+        #return False
+
         # strategy: check if there is a white line close
         #    enough to bot (threshold = self.__WHITE_BORDER_CUTOFF)
 
         clipped_img = img[self.__WHITE_BORDER_CUTOFF:]
 
-        def is_white_pixel(px):
-            return min(px) >= 0xF0
-        
-        # currently only checking if any pixel in slice is white
-        def is_white_slice(sl):
-            return any(map(lambda px: is_white_pixel(px), sl))
-
         # how many verticles slices in clipped_img have white pixels?
         # TODO: can update code to only check contiguous white regions
         #   this would be more complicated but arguably better
-        num_white_slices = len(filter(lambda s: is_white_slice(s), np.transpose(clipped_img, (1, 0, 2))))
+        tr = np.transpose(clipped_img, (1, 0, 2))
+        
+        px_sum = np.sum(tr, axis=2)
 
-        return num_white_slices >= self.__WHITE_BORDER_THRESH
+        maxed = np.max(px_sum, axis=1)
+
+        count = np.sum(maxed >= self.__WHITE_PIXEL_THRESH)
+
+        return count >= self.__WHITE_BORDER_THRESH
     
     def corner(self):
         return False
