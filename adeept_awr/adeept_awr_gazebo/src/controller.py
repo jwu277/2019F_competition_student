@@ -50,12 +50,17 @@ class AdeeptAWRController:
         self.__IMG_WIDTH = 1280
         self.__IMG_HEIGHT = 720
 
+        # turn
+        # duty cycle: turn x out of y cycles (drive forward for the other y - x cycles)
+        self.__TURN_DUTY_PERIOD = 3 # y
+        self.__TURN_DUTY_VAL = 2 # x
+
         # wait
         self.__WAIT_TIME = 0.6 # can be tuned
         
         # white_border
         self.__WHITE_PIXEL_THRESH = 3 * 0xF0 # threshold for sum of BGR values to be white
-        self.__WHITE_BORDER_CUTOFF = 500 # tunable, image cutoff
+        self.__WHITE_BORDER_CUTOFF = 450 # tunable, image cutoff
         self.__WHITE_BORDER_THRESH = 1000 # tunable, number of pixels
 
 
@@ -70,9 +75,15 @@ class AdeeptAWRController:
 
     def reinit_state(self):
 
-        self.waiting = True
+        # State timer
         self.__timer = rospy.get_time()
 
+        # turn
+        self.turn_duty_counter = 0
+
+        # wait
+        self.waiting = True
+        
         # Add more state variables
 
     
@@ -96,7 +107,7 @@ class AdeeptAWRController:
         # TODO: remove initial wait (kept rn for testing)
         if self.__state_counter == -1:
 
-            if rospy.get_time() - self.__timer >= 5.0:
+            if rospy.get_time() - self.__timer >= 4.0:
                 self.__state_counter += 1
                 self.reinit_state()
                 return
@@ -119,6 +130,12 @@ class AdeeptAWRController:
             
             self.turn()
         
+        elif self.__state_counter == 2:
+
+            # TODO: add termination condition (at corner)
+
+            self.drive()
+
         # TODO: complete
 
 
@@ -135,14 +152,25 @@ class AdeeptAWRController:
     ## ACTIONS ##
     #############
 
+
     # TODO: "pid" control
     def drive(self):
         self.pub_vel_msg(1, 0)
 
-    # TODO: implement smarter turning if needed
+
     def turn(self):
-        self.pub_vel_msg(0, 1)
+
+        if self.turn_duty_counter < self.__TURN_DUTY_VAL:
+            self.pub_vel_msg(0, 1)
+        else:
+            self.pub_vel_msg(1, 0)
+        
+        self.turn_duty_counter += 1
+
+        if self.turn_duty_counter == self.__TURN_DUTY_PERIOD:
+            self.turn_duty_counter = 0
     
+
     def wait(self):
 
         self.pub_vel_msg(0, 0)
@@ -150,7 +178,6 @@ class AdeeptAWRController:
         if rospy.get_time() - self.__timer >= self.__WAIT_TIME:
             self.waiting = False
         
-
 
     ############
     ## EVENTS ##
