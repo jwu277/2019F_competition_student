@@ -9,8 +9,9 @@ from cv_bridge import CvBridge
 import cv2
 
 import numpy as np
-
 from scipy import ndimage
+
+import collections
 
 #from PIL import Image as Im
 
@@ -61,9 +62,10 @@ class AdeeptAWRController:
         self.__NOT_RED_THRESH = 0x10
         self.__BLACK_PIXEL_SUM_THRESH = 0xF0 # sum
         self.__CROSSWALK_DIFFERENCE_THRESH = 12 # number of pixels
-        self.__CROSSWALK_MOVEMENT_THRESH = 100 # for getting out of waiting_init state
+        self.__CROSSWALK_MOVEMENT_THRESH = 300 # for getting out of waiting_init state
         self.__CROSSWALK_PASSING_TIME = 1.5
         self.__CROSSWALK_INIT_DEBOUNCE_TIME = 0.6
+        self.__MOTION_DEQUE_LENGTH = 2
 
         # turn
         # duty cycle: turn x out of y cycles (drive forward for the other y - x cycles)
@@ -99,6 +101,8 @@ class AdeeptAWRController:
         # drive
         self.crosswalk_state = "free"
         self.last_crosswalk_image = None
+        # safe to proceed when every element in deque is True
+        self.crosswalk_motion_deque = collections.deque([False] * self.__MOTION_DEQUE_LENGTH, self.__MOTION_DEQUE_LENGTH)
 
         # turn
         self.turn_duty_counter = 0
@@ -186,6 +190,8 @@ class AdeeptAWRController:
 
         # wait for ped to cross i.e. make motion
         if self.crosswalk_state == "waiting_init":
+            # TODO idea: confine search area to middle of camera view, since we want translational
+            #   ped movement, not rotational
             if np.sum(np.sum(cv2.subtract(img, self.last_crosswalk_image), axis=2) >
                 self.__BLACK_PIXEL_SUM_THRESH) > self.__CROSSWALK_MOVEMENT_THRESH:
                 self.crosswalk_state = "waiting"
@@ -194,10 +200,14 @@ class AdeeptAWRController:
         if self.crosswalk_state == "waiting":
             if np.sum(np.sum(cv2.subtract(img, self.last_crosswalk_image), axis=2) >
                 self.__BLACK_PIXEL_SUM_THRESH) <= self.__CROSSWALK_DIFFERENCE_THRESH:
-                self.crosswalk_state = "passing"
-                self.crosswalk_passing_timer = rospy.get_time()
+                self.crosswalk_motion_deque.append(True)
+                self.last_crosswalk_image = img
+                if all(self.crosswalk_motion_deque):
+                    self.crosswalk_state = "passing"
+                    self.crosswalk_passing_timer = rospy.get_time()
             else:
                 self.last_crosswalk_image = img
+                self.crosswalk_motion_deque.append(False)
             return
 
         if self.crosswalk_state == "passing":
@@ -215,7 +225,9 @@ class AdeeptAWRController:
 
         if at_crosswalk(img[self.__CROSSWALK_CUTOFF:]):
             self.pub_vel_msg(0, 0)
-            self.crosswalk_state = "init_debounce"
+            # TODO: just failed with no init_debounce (and seemingly due to that reason), may be required after all
+            # consider only concentrating on centre region though
+            self.crosswalk_state = "waiting"#"init_debounce" # we may not need the debouncing...
             self.last_crosswalk_image = img
             self.crosswalk_debounce_timer = rospy.get_time()
             return
