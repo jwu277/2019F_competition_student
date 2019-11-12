@@ -61,7 +61,9 @@ class AdeeptAWRController:
         self.__NOT_RED_THRESH = 0x10
         self.__BLACK_PIXEL_SUM_THRESH = 0xF0 # sum
         self.__CROSSWALK_DIFFERENCE_THRESH = 12 # number of pixels
+        self.__CROSSWALK_MOVEMENT_THRESH = 100 # for getting out of waiting_init state
         self.__CROSSWALK_PASSING_TIME = 1.5
+        self.__CROSSWALK_INIT_DEBOUNCE_TIME = 0.6
 
         # turn
         # duty cycle: turn x out of y cycles (drive forward for the other y - x cycles)
@@ -177,11 +179,21 @@ class AdeeptAWRController:
     # TODO: "pid" control
     def drive(self, img):
 
-        # currently only detects one crosswalk per state. TODO: use debounce instead
+        if self.crosswalk_state == "init_debounce":
+            if rospy.get_time() - self.crosswalk_debounce_timer >= self.__CROSSWALK_INIT_DEBOUNCE_TIME:
+                self.crosswalk_state = "waiting_init"
+            return
 
-        # TODO: debounce crosswalks
+        # wait for ped to cross i.e. make motion
+        if self.crosswalk_state == "waiting_init":
+            if np.sum(np.sum(cv2.subtract(img, self.last_crosswalk_image), axis=2) >
+                self.__BLACK_PIXEL_SUM_THRESH) > self.__CROSSWALK_MOVEMENT_THRESH:
+                self.crosswalk_state = "waiting"
+            return
+        
         if self.crosswalk_state == "waiting":
-            if np.sum(np.sum(cv2.subtract(img, self.last_crosswalk_image), axis=2) > self.__BLACK_PIXEL_SUM_THRESH) <= self.__CROSSWALK_DIFFERENCE_THRESH:
+            if np.sum(np.sum(cv2.subtract(img, self.last_crosswalk_image), axis=2) >
+                self.__BLACK_PIXEL_SUM_THRESH) <= self.__CROSSWALK_DIFFERENCE_THRESH:
                 self.crosswalk_state = "passing"
                 self.crosswalk_passing_timer = rospy.get_time()
             else:
@@ -203,8 +215,9 @@ class AdeeptAWRController:
 
         if at_crosswalk(img[self.__CROSSWALK_CUTOFF:]):
             self.pub_vel_msg(0, 0)
-            self.crosswalk_state = "waiting"
+            self.crosswalk_state = "init_debounce"
             self.last_crosswalk_image = img
+            self.crosswalk_debounce_timer = rospy.get_time()
             return
         
         img_line = img[-1]
