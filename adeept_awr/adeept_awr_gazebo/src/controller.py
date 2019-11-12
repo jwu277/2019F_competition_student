@@ -10,12 +10,13 @@ import cv2
 
 import numpy as np
 
+from scipy import ndimage
+
 #from PIL import Image as Im
 
 class AdeeptAWRController:
 
-    # tunable = please tune
-    # can be tuned = not crucial to be tuned but can be tuned anyways
+    ## Anything that looks like it can be tuned probably can be tuned...
 
     def __init__(self, src_camera_topic, dst_vel_topic):
 
@@ -40,8 +41,6 @@ class AdeeptAWRController:
 
         self.bridge = CvBridge()
 
-        self.temp = False
-
     
     def init_constants(self):
 
@@ -49,6 +48,20 @@ class AdeeptAWRController:
         # y is inverted
         self.__IMG_WIDTH = 1280
         self.__IMG_HEIGHT = 720
+
+        # drive
+        # current setup: use bottom row of image
+        self.__ROAD_CENTRE = (self.__IMG_WIDTH - 1) / 2.0
+        self.__DRIVE_MARGIN = 70
+        self.__GRAY_LOWER = 0x50
+        self.__GRAY_UPPER = 0x5A
+        self.__CROSSWALK_CUTOFF = 700
+        self.__CROSSWALK_THRESH = 800 # total number of px in cutoff image
+        self.__RED_THRESH = 0xF0
+        self.__NOT_RED_THRESH = 0x10
+        self.__BLACK_PIXEL_SUM_THRESH = 0xF0 # sum
+        self.__CROSSWALK_DIFFERENCE_THRESH = 12 # number of pixels
+        self.__CROSSWALK_PASSING_TIME = 1.5
 
         # turn
         # duty cycle: turn x out of y cycles (drive forward for the other y - x cycles)
@@ -60,8 +73,11 @@ class AdeeptAWRController:
         
         # white_border
         self.__WHITE_PIXEL_THRESH = 3 * 0xF0 # threshold for sum of BGR values to be white
-        self.__WHITE_BORDER_CUTOFF = 450 # tunable, image cutoff
-        self.__WHITE_BORDER_THRESH = 1000 # tunable, number of pixels
+        self.__WHITE_BORDER_CUTOFF = 450 # image cutoff
+        self.__WHITE_BORDER_THRESH = 1000 # number of pixels needed
+
+        # turn complete
+        self.__TURN_TIME = 3.0
 
 
     def pub_vel_msg(self, lin, ang):
@@ -78,8 +94,13 @@ class AdeeptAWRController:
         # State timer
         self.__timer = rospy.get_time()
 
+        # drive
+        self.crosswalk_state = "free"
+        self.last_crosswalk_image = None
+
         # turn
         self.turn_duty_counter = 0
+        self.turn_timer = rospy.get_time()
 
         # wait
         self.waiting = True
@@ -88,7 +109,7 @@ class AdeeptAWRController:
 
     
     def debug_img(self, img):
-        cv2.circle(img, (200, self.__WHITE_BORDER_CUTOFF), 10, (0x33, 0x99, 0xff), thickness=-1)
+        cv2.circle(img, (200, self.__WHITE_BORDER_CUTOFF), 15, (0x00, 0x00, 0xff), thickness=-1)
         cv2.imshow('image', img)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
@@ -97,7 +118,7 @@ class AdeeptAWRController:
     def callback(self, msg):
 
         #print(rospy.get_time() - msg.header.stamp.secs)
-        img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
+        img = self.bridge.imgmsg_to_cv2(msg, "bgr8")
 
         # Waiting state
         if self.waiting:
@@ -111,7 +132,7 @@ class AdeeptAWRController:
                 self.__state_counter += 1
                 self.reinit_state()
                 return
-
+        # drive out of starting position into outer loop
         elif self.__state_counter == 0:
 
             if self.white_border(img):
@@ -119,8 +140,8 @@ class AdeeptAWRController:
                 self.reinit_state()
                 return
             
-            self.drive()
-
+            self.drive(img)
+        # turn into outer loop
         elif self.__state_counter == 1:
 
             if self.turn_complete():
@@ -129,12 +150,12 @@ class AdeeptAWRController:
                 return
             
             self.turn()
-        
+        # drive around outer loop
         elif self.__state_counter == 2:
 
-            # TODO: add termination condition (at corner)
+            # TODO: add termination condition
 
-            self.drive()
+            self.drive(img)
 
         # TODO: complete
 
@@ -154,8 +175,53 @@ class AdeeptAWRController:
 
 
     # TODO: "pid" control
-    def drive(self):
-        self.pub_vel_msg(1, 0)
+    def drive(self, img):
+
+        # currently only detects one crosswalk per state. TODO: use debounce instead
+
+        # TODO: debounce crosswalks
+        if self.crosswalk_state == "waiting":
+            if np.sum(np.sum(cv2.subtract(img, self.last_crosswalk_image), axis=2) > self.__BLACK_PIXEL_SUM_THRESH) <= self.__CROSSWALK_DIFFERENCE_THRESH:
+                self.crosswalk_state = "passing"
+                self.crosswalk_passing_timer = rospy.get_time()
+            else:
+                self.last_crosswalk_image = img
+            return
+
+        if self.crosswalk_state == "passing":
+            self.pub_vel_msg(1, 0)
+            if rospy.get_time() - self.crosswalk_passing_timer >= self.__CROSSWALK_PASSING_TIME:
+                self.crosswalk_state = "free"
+            return
+
+        def at_crosswalk(v):
+            return np.sum(np.logical_and(v[:,:,2] >= self.__RED_THRESH,
+                np.logical_and(v[:,:,1] <= self.__NOT_RED_THRESH, v[:,:,0] <= self.__NOT_RED_THRESH))) >= self.__CROSSWALK_THRESH
+        
+        def is_gray(v):
+            return np.logical_and((v >= self.__GRAY_LOWER), (v <= self.__GRAY_UPPER))
+
+        if at_crosswalk(img[self.__CROSSWALK_CUTOFF:]):
+            self.pub_vel_msg(0, 0)
+            self.crosswalk_state = "waiting"
+            self.last_crosswalk_image = img
+            return
+        
+        img_line = img[-1]
+
+        gray_bool = np.all(is_gray(img_line), axis=1)
+
+        centroid =  ndimage.measurements.center_of_mass(gray_bool)[0] if np.any(gray_bool) else self.__ROAD_CENTRE
+
+        if centroid - self.__ROAD_CENTRE < -self.__DRIVE_MARGIN:
+            # steer left (ccw)
+            self.pub_vel_msg(0, 1)
+        elif centroid - self.__ROAD_CENTRE > self.__DRIVE_MARGIN:
+            # steer right (cw)
+            self.pub_vel_msg(0, -1)
+        else:
+            # drive forward
+            self.pub_vel_msg(1, 0)
 
 
     def turn(self):
@@ -218,7 +284,7 @@ class AdeeptAWRController:
         return False
     
     def turn_complete(self):
-        return False
+        return rospy.get_time() - self.turn_timer >= self.__TURN_TIME
 
         
 if __name__ == '__main__':
