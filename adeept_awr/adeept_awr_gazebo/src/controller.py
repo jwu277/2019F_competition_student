@@ -13,7 +13,7 @@ from scipy import ndimage
 
 import collections
 
-#from PIL import Image as Im
+from license_processing import LicenseProcessor
 
 class AdeeptAWRController:
 
@@ -41,6 +41,7 @@ class AdeeptAWRController:
         self.reinit_state()
 
         self.bridge = CvBridge()
+        self.license_processor = LicenseProcessor()
 
     
     def init_constants(self):
@@ -52,7 +53,7 @@ class AdeeptAWRController:
 
         # drive
         # current setup: use bottom row of image
-        self.__ROAD_CENTRE = (self.__IMG_WIDTH - 1) / 2.0
+        self.__WIDTH_CENTRE = (self.__IMG_WIDTH - 1) / 2.0
         self.__DRIVE_MARGIN = 70
         self.__GRAY_LOWER = 0x50
         self.__GRAY_UPPER = 0x5A
@@ -62,10 +63,18 @@ class AdeeptAWRController:
         self.__NOT_RED_THRESH = 0x10
         self.__BLACK_PIXEL_SUM_THRESH = 0xF0 # sum
         self.__CROSSWALK_DIFFERENCE_THRESH = 12 # number of pixels
-        self.__CROSSWALK_MOVEMENT_THRESH = 300 # for getting out of waiting_init state
-        self.__CROSSWALK_PASSING_TIME = 1.5
+        self.__CROSSWALK_PASSING_TIME = 2.0
         self.__CROSSWALK_INIT_DEBOUNCE_TIME = 0.6
         self.__MOTION_DEQUE_LENGTH = 2
+        # waiting for motion, only detect motion between LEFT_CUTOFF and RIGHT_CUTOFF (inclusive)
+        self.__WAITING_TRIGGER_LEFT_CUTOFF = int(self.__IMG_WIDTH * 0.3)
+        self.__WAITING_TRIGGER_RIGHT_CUTOFF = self.__IMG_WIDTH - self.__WAITING_TRIGGER_LEFT_CUTOFF
+        self.__CROSSWALK_MOVEMENT_THRESH = 300 # for getting out of waiting_init state
+        # crosswalk align
+        self.__CROSSWALK_ALIGN_CUTOFF = 550
+        # xy-moment
+        self.__CROSSWALK_ALIGN_THRESH = 500
+        self.__CROSSWALK_ALIGN_STREAK = 1 # how many aligned in a row
 
         # turn
         # duty cycle: turn x out of y cycles (drive forward for the other y - x cycles)
@@ -103,6 +112,7 @@ class AdeeptAWRController:
         self.last_crosswalk_image = None
         # safe to proceed when every element in deque is True
         self.crosswalk_motion_deque = collections.deque([False] * self.__MOTION_DEQUE_LENGTH, self.__MOTION_DEQUE_LENGTH)
+        self.align_counter = 0
 
         # turn
         self.turn_duty_counter = 0
@@ -115,7 +125,9 @@ class AdeeptAWRController:
 
     
     def debug_img(self, img):
-        cv2.circle(img, (200, self.__WHITE_BORDER_CUTOFF), 15, (0x00, 0x00, 0xff), thickness=-1)
+        cv2.circle(img, (200, 200), 15, (0x00, 0x00, 0xff), thickness=-1)
+        cv2.circle(img, (200, 400), 15, (0x00, 0xff, 0x00), thickness=-1)
+        cv2.circle(img, (200, 600), 15, (0xff, 0x00, 0x00), thickness=-1)
         cv2.imshow('image', img)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
@@ -183,8 +195,49 @@ class AdeeptAWRController:
     # TODO: "pid" control
     def drive(self, img):
 
+        def red_filter(v):
+            return np.logical_and(v[:,:,2] >= self.__RED_THRESH, np.logical_and(v[:,:,1] <=
+                self.__NOT_RED_THRESH, v[:,:,0] <= self.__NOT_RED_THRESH))
+
+        if self.crosswalk_state == "aligning":
+            
+            # use xy-moment of red pixels in cutoff image
+
+            red_img = red_filter(img[self.__CROSSWALK_ALIGN_CUTOFF:,:,:])
+            red_weight = np.sum(red_img)
+
+            # if not any(red_img), xy_moment would be zero
+            y_centroid, x_centroid = ndimage.measurements.center_of_mass(red_img) if red_weight > 0 else (0, 0)
+
+            x = np.broadcast_to(np.arange(red_img.shape[1]), red_img.shape)
+            y = np.broadcast_to(np.arange(red_img.shape[0])[:, None], red_img.shape)
+            xy_moment = np.sum(np.multiply(red_img, np.multiply(x - x_centroid, y - y_centroid)))
+            
+            # ignore this procedure of alignment if red_weight = 0
+            normalized_xy = xy_moment / red_weight if red_weight > 0 else 0
+            print(normalized_xy)
+
+            if (normalized_xy > self.__CROSSWALK_ALIGN_THRESH):
+                # turn left (cw)
+                self.pub_vel_msg(0, -1)
+                self.align_counter = 0
+            elif (normalized_xy < -self.__CROSSWALK_ALIGN_THRESH):
+                # turn right (ccw)
+                self.pub_vel_msg(0, 1)
+                self.align_counter = 0
+            else:
+                self.pub_vel_msg(0, 0)
+                self.align_counter += 1
+                if self.align_counter >= self.__CROSSWALK_ALIGN_STREAK:
+                    self.crosswalk_state = "init_debounce"
+                    #self.debug_img(img)
+                    self.crosswalk_debounce_timer = rospy.get_time()
+            return
+
+
         if self.crosswalk_state == "init_debounce":
             if rospy.get_time() - self.crosswalk_debounce_timer >= self.__CROSSWALK_INIT_DEBOUNCE_TIME:
+                self.last_crosswalk_image = img
                 self.crosswalk_state = "waiting_init"
             return
 
@@ -192,7 +245,8 @@ class AdeeptAWRController:
         if self.crosswalk_state == "waiting_init":
             # TODO idea: confine search area to middle of camera view, since we want translational
             #   ped movement, not rotational
-            if np.sum(np.sum(cv2.subtract(img, self.last_crosswalk_image), axis=2) >
+            if np.sum(np.sum(cv2.subtract(img, self.last_crosswalk_image)
+                [:,self.__WAITING_TRIGGER_LEFT_CUTOFF:self.__WAITING_TRIGGER_RIGHT_CUTOFF + 1,:], axis=2) >
                 self.__BLACK_PIXEL_SUM_THRESH) > self.__CROSSWALK_MOVEMENT_THRESH:
                 self.crosswalk_state = "waiting"
             return
@@ -217,36 +271,40 @@ class AdeeptAWRController:
             return
 
         def at_crosswalk(v):
-            return np.sum(np.logical_and(v[:,:,2] >= self.__RED_THRESH,
-                np.logical_and(v[:,:,1] <= self.__NOT_RED_THRESH, v[:,:,0] <= self.__NOT_RED_THRESH))) >= self.__CROSSWALK_THRESH
+            return np.sum(red_filter(v)) >= self.__CROSSWALK_THRESH
         
+        # def is_red(v):
+        #     return np.logical_and(v[:,2] >= self.__RED_THRESH,
+        #         np.logical_and(v[:,1] <= self.__NOT_RED_THRESH, v[:,0] <= self.__NOT_RED_THRESH))
+
         def is_gray(v):
-            return np.logical_and((v >= self.__GRAY_LOWER), (v <= self.__GRAY_UPPER))
+            return np.all(np.logical_and((v >= self.__GRAY_LOWER), (v <= self.__GRAY_UPPER)), axis=1)
 
         if at_crosswalk(img[self.__CROSSWALK_CUTOFF:]):
             self.pub_vel_msg(0, 0)
-            # TODO: just failed with no init_debounce (and seemingly due to that reason), may be required after all
-            # consider only concentrating on centre region though
-            self.crosswalk_state = "waiting"#"init_debounce" # we may not need the debouncing...
-            self.last_crosswalk_image = img
-            self.crosswalk_debounce_timer = rospy.get_time()
+            self.crosswalk_state = "aligning"
             return
         
         img_line = img[-1]
 
-        gray_bool = np.all(is_gray(img_line), axis=1)
+        gray_bool = is_gray(img_line)#np.logical_or(is_gray(img_line), is_red(img_line))
 
-        centroid =  ndimage.measurements.center_of_mass(gray_bool)[0] if np.any(gray_bool) else self.__ROAD_CENTRE
+        centroid =  ndimage.measurements.center_of_mass(gray_bool)[0] if np.any(gray_bool) else self.__WIDTH_CENTRE
 
-        if centroid - self.__ROAD_CENTRE < -self.__DRIVE_MARGIN:
+        if centroid - self.__WIDTH_CENTRE < -self.__DRIVE_MARGIN:
             # steer left (ccw)
             self.pub_vel_msg(0, 1)
-        elif centroid - self.__ROAD_CENTRE > self.__DRIVE_MARGIN:
+        elif centroid - self.__WIDTH_CENTRE > self.__DRIVE_MARGIN:
             # steer right (cw)
             self.pub_vel_msg(0, -1)
         else:
             # drive forward
             self.pub_vel_msg(1, 0)
+        
+        ## LICENSE PLATE DETECTION
+        # TODO
+        # if self.license_processor.license_finder(img):
+        #     self.license_processor.parse_plate(self.license_processor.mem())
 
 
     def turn(self):
