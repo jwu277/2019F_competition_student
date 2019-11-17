@@ -63,6 +63,7 @@ class LicenseProcessor:
                 #test points   
                 tpt1 = img[yav,x1 - 5]
                 tpt2 = img[yav,x1 + 5]
+                #tpt3 = img[(2*y1 + y2)/3, ]
                 
                 #verify that one side of the test point is a license plate
                 if (tpt1[0] == tpt1[1] and tpt1[1] == tpt1[2]) or \

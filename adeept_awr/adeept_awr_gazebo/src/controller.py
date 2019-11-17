@@ -57,7 +57,7 @@ class AdeeptAWRController:
         self.__DRIVE_MARGIN = 70
         self.__GRAY_LOWER = 0x50
         self.__GRAY_UPPER = 0x5A
-        self.__CROSSWALK_CUTOFF = 700
+        self.__CROSSWALK_CUTOFF = 660
         self.__CROSSWALK_THRESH = 800 # total number of px in cutoff image
         self.__RED_THRESH = 0xF0
         self.__NOT_RED_THRESH = 0x10
@@ -67,14 +67,14 @@ class AdeeptAWRController:
         self.__CROSSWALK_INIT_DEBOUNCE_TIME = 0.6
         self.__MOTION_DEQUE_LENGTH = 2
         # waiting for motion, only detect motion between LEFT_CUTOFF and RIGHT_CUTOFF (inclusive)
-        self.__WAITING_TRIGGER_LEFT_CUTOFF = int(self.__IMG_WIDTH * 0.3)
+        self.__WAITING_TRIGGER_LEFT_CUTOFF = int(self.__IMG_WIDTH * 0.4)
         self.__WAITING_TRIGGER_RIGHT_CUTOFF = self.__IMG_WIDTH - self.__WAITING_TRIGGER_LEFT_CUTOFF
         self.__CROSSWALK_MOVEMENT_THRESH = 300 # for getting out of waiting_init state
         # crosswalk align
         self.__CROSSWALK_ALIGN_CUTOFF = 550
-        # xy-moment
-        self.__CROSSWALK_ALIGN_THRESH = 500
-        self.__CROSSWALK_ALIGN_STREAK = 1 # how many aligned in a row
+        self.__CROSSWALK_ALIGN_THRESH = 200 # xy-moment threshold
+        self.__CROSSWALK_ALIGN_DUTY_PERIOD = 8
+        self.__CROSSWALK_ALIGN_DUTY_VAL = 1
 
         # turn
         # duty cycle: turn x out of y cycles (drive forward for the other y - x cycles)
@@ -102,17 +102,21 @@ class AdeeptAWRController:
         self.vel_pub.publish(cmd_vel_msg)
 
 
+    def reinit_crosswalk_state(self):
+        # drive
+        self.last_crosswalk_image = None
+        # safe to proceed when every element in deque is True
+        self.crosswalk_motion_deque = collections.deque([False] * self.__MOTION_DEQUE_LENGTH, self.__MOTION_DEQUE_LENGTH)
+        self.align_counter = 0
+
+
     def reinit_state(self):
 
         # State timer
         self.__timer = rospy.get_time()
 
-        # drive
         self.crosswalk_state = "free"
-        self.last_crosswalk_image = None
-        # safe to proceed when every element in deque is True
-        self.crosswalk_motion_deque = collections.deque([False] * self.__MOTION_DEQUE_LENGTH, self.__MOTION_DEQUE_LENGTH)
-        self.align_counter = 0
+        self.reinit_crosswalk_state()
 
         # turn
         self.turn_duty_counter = 0
@@ -219,19 +223,20 @@ class AdeeptAWRController:
 
             if (normalized_xy > self.__CROSSWALK_ALIGN_THRESH):
                 # turn left (cw)
-                self.pub_vel_msg(0, -1)
-                self.align_counter = 0
+                self.pub_vel_msg(0, -1 * (self.align_counter < self.__CROSSWALK_ALIGN_DUTY_VAL))
+                self.align_counter += 1
             elif (normalized_xy < -self.__CROSSWALK_ALIGN_THRESH):
                 # turn right (ccw)
-                self.pub_vel_msg(0, 1)
-                self.align_counter = 0
+                self.pub_vel_msg(0, 1 * (self.align_counter < self.__CROSSWALK_ALIGN_DUTY_VAL))
+                self.align_counter += 1
             else:
                 self.pub_vel_msg(0, 0)
-                self.align_counter += 1
-                if self.align_counter >= self.__CROSSWALK_ALIGN_STREAK:
-                    self.crosswalk_state = "init_debounce"
-                    #self.debug_img(img)
-                    self.crosswalk_debounce_timer = rospy.get_time()
+                self.crosswalk_state = "init_debounce"
+                self.crosswalk_debounce_timer = rospy.get_time()
+            
+            if self.align_counter == self.__CROSSWALK_ALIGN_DUTY_PERIOD:
+                self.align_counter = 0
+
             return
 
 
@@ -283,6 +288,7 @@ class AdeeptAWRController:
         if at_crosswalk(img[self.__CROSSWALK_CUTOFF:]):
             self.pub_vel_msg(0, 0)
             self.crosswalk_state = "aligning"
+            self.reinit_crosswalk_state()
             return
         
         img_line = img[-1]
