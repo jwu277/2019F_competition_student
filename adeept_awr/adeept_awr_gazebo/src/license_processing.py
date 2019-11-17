@@ -6,9 +6,13 @@ import os
 class LicenseProcessor:
 
     def __init__(self):
+
         self.__im_counter = 0 # for testing, increments every time license_finder is called
         self.__path = os.path.dirname(os.path.abspath(__file__))
         self.__img_mem = None # should be named lp_mem... TODO
+
+        self.__LP_RECOG_GRAY_THRESH = 0.7 # proportion of adjacent grayscale pixels needed
+        self.__GRAYSCALE_DELTA_THRESH = 0x00 # max difference in BGR values for grayscale pixels
     
     def mem(self):
         return self.__img_mem
@@ -32,7 +36,7 @@ class LicenseProcessor:
         #use Hough transform to find verticle lines
         gray = cv2.cvtColor(mask,cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray,50,150,apertureSize = 3)
-        minLineLength=1
+        minLineLength=90
         lines = cv2.HoughLinesP(image=edges,rho=1,theta=np.pi/180, threshold=80,lines=np.array([]), minLineLength=minLineLength,maxLineGap=30)
 
         #if there are no lines return 0
@@ -41,13 +45,15 @@ class LicenseProcessor:
             return False
 
         a,b,c = lines.shape
+        lines = lines[lines[:,:,0].argsort()] # sort by x1
+        # todo: remove double edges
 
         #create an empty list of points
         pts = []
 
         #drawing the lines for debugging
         for i in range(a):
-            if lines[i][0][0] == lines[i][0][2]:
+            if np.abs(lines[i][0][0] - lines[i][0][2]) < 3:
                 #cv2.line(mask, (lines[i][0][0], lines[i][0][1]), (lines[i][0][2], lines[i][0][3]), (255, 255, 255), 3, cv2.LINE_AA)
                 x1 = lines[i][0][0]
                 y1 = lines[i][0][1]
@@ -59,15 +65,17 @@ class LicenseProcessor:
                 #verify that the line is valid, done by checking for the correct colours on either side
                 yav = (int)((y1 + y2) / 2)
                 #ydiff = abs(y1-y2)
+                y_min = np.min([y1, y2])
+                y_max = np.max([y1, y2])
+                y_range = y_max - y_min
 
-                #test points   
-                tpt1 = img[yav,x1 - 5]
-                tpt2 = img[yav,x1 + 5]
-                #tpt3 = img[(2*y1 + y2)/3, ]
+                #test lines   
+                tl1 = img[y_min:y_max,x1 - 5]
+                tl2 = img[y_min:y_max,x1 + 5]
                 
                 #verify that one side of the test point is a license plate
-                if (tpt1[0] == tpt1[1] and tpt1[1] == tpt1[2]) or \
-                (tpt2[0] == tpt2[1] and tpt2[1] == tpt2[2]):
+                if np.sum((np.max(tl1, axis=1) - np.min(tl1, axis=1)) <= self.__GRAYSCALE_DELTA_THRESH) >= self.__LP_RECOG_GRAY_THRESH * y_range or \
+                    np.sum((np.max(tl2, axis=1) - np.min(tl2, axis=1)) <= self.__GRAYSCALE_DELTA_THRESH) >= self.__LP_RECOG_GRAY_THRESH * y_range:
 
                     if len(pts) == 0:
                         #append pt2 for a smaller y-value first at the same x
@@ -89,11 +97,26 @@ class LicenseProcessor:
 
                             mask[y1,x1] = [255, 0, 255]
                             mask[y2,x2] = [255, 0, 255]
-
+        # print("DAMN")
         #check to see if a license plate was found in the image, if not, return 0
         if len(pts) != 4:
             #print(filename + " has no plate")
             return False
+        
+        # filter out buggy lines by looking at height difference
+        height1 = abs(pts[0][0]-pts[1][0])
+        height2 = abs(pts[2][0]-pts[3][0])
+        if abs(height1 - height2) >= min(height1, height2) * 0.3:
+            # print("found a buggy line")
+            return False
+
+        for line in lines:
+            x1, y1, x2, y2 = line[0]
+            cv2.line(img, (x1, y1), (x2, y2), (255, 0, 0), 3)
+
+        # Show result
+        cv2.imshow("Result Image", img)
+        cv2.waitKey(0)
 
         #testing perspective transform
         xp1, yp1, yp2, xp3 = 0, 0, 0, 0
@@ -141,13 +164,13 @@ class LicenseProcessor:
 
         M = cv2.getPerspectiveTransform(un_transformed_points, transformed_points)
         dst = cv2.warpPerspective(img,M,(xp4,yp4))
-
+        
+        self.__im_counter += 1
         #save the image to the images_post folder
         path = self.__path + "/cropped_plates"
         cv2.imwrite(path + "/" + str(self.__im_counter) + ".png", dst)
         cv2.imwrite(path + "/" + str(self.__im_counter) + "_og" + ".png", img)
         print("License plate found")
-        self.__im_counter += 1
         self.__img_mem = dst
 
         # #for testing show the images

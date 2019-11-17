@@ -139,7 +139,7 @@ class AdeeptAWRController:
 
     def callback(self, msg):
 
-        #print(rospy.get_time() - msg.header.stamp.secs)
+        # print(rospy.get_time() - msg.header.stamp.secs)
         img = self.bridge.imgmsg_to_cv2(msg, "bgr8")
 
         # Waiting state
@@ -219,7 +219,7 @@ class AdeeptAWRController:
             
             # ignore this procedure of alignment if red_weight = 0
             normalized_xy = xy_moment / red_weight if red_weight > 0 else 0
-            print(normalized_xy)
+            # print(normalized_xy)
 
             if (normalized_xy > self.__CROSSWALK_ALIGN_THRESH):
                 # turn left (cw)
@@ -309,8 +309,10 @@ class AdeeptAWRController:
         
         ## LICENSE PLATE DETECTION
         # TODO
-        # if self.license_processor.license_finder(img):
-        #     self.license_processor.parse_plate(self.license_processor.mem())
+        # ttt = rospy.get_time()
+        if self.license_processor.license_finder(img):
+            self.license_processor.parse_plate(self.license_processor.mem())
+        # print(rospy.get_time() - ttt)
 
 
     def turn(self):
