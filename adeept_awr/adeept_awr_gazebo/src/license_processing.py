@@ -141,6 +141,7 @@ def license_finder(filename):
     return True
 
 #Takes a license plate image and crops it with individual plate letters and the parking stall number
+#Places the new images in "cropped_chars"
 #@Param:
 #   filename: the name of the license plate image
 #@Returns:
