@@ -106,21 +106,21 @@ class LicenseProcessor:
         height1 = abs(pts[0][0]-pts[1][0])
         height2 = abs(pts[2][0]-pts[3][0])
         if abs(height1 - height2) >= min(height1, height2) * 0.3:
-            print("found a buggy line")
+            #print("found a buggy line")
             return False
 
         #filter out lines that aree in too-close proximity with their x-values
         if abs(pts[0][1] - pts[2][1]) < 50:
-            print("lines too close together")
+            #print("lines too close together")
             return False
 
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
-            cv2.line(img, (x1, y1), (x2, y2), (255, 0, 0), 3)
+        # for line in lines:
+        #     x1, y1, x2, y2 = line[0]
+        #     cv2.line(img, (x1, y1), (x2, y2), (255, 0, 0), 3)
 
-        # Show result
-        cv2.imshow("Result Image", img)
-        cv2.waitKey(0)
+        # # Show result
+        # cv2.imshow("Result Image", img)
+        # cv2.waitKey(0)
 
         #testing perspective transform
         xp1, yp1, yp2, xp3 = 0, 0, 0, 0
@@ -173,13 +173,13 @@ class LicenseProcessor:
         #save the image to the images_post folder
         path = self.__path + "/cropped_plates"
         cv2.imwrite(path + "/" + str(self.__im_counter) + ".png", dst)
-        cv2.imwrite(path + "/" + str(self.__im_counter) + "_og" + ".png", img)
+        #cv2.imwrite(path + "/" + str(self.__im_counter) + "_og" + ".png", img)
         print("License plate found")
         self.__img_mem = dst
 
         # #for testing show the images
-        plt.imshow(dst)
-        plt.show()
+        # plt.imshow(dst)
+        # plt.show()
         return True
 
     #Takes a license plate image and crops it with individual plate letters and the parking stall number
@@ -190,30 +190,33 @@ class LicenseProcessor:
     #   False iff the image parsing failed
     def parse_plate(self, img):
         #img = cv2.imread('cropped_plates/' + filename)
+
+        #turn the image to B&W
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        (thresh, img_bw) = cv2.threshold(img_gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+
         height, width, channels = img.shape
         letter_top, letter_bot, letter_height = 600, 700, 100
         letter_width = 100
 
         #crop all of the characters in the license plate
-        char1 = img[letter_top:letter_bot, 60:60 + letter_width]   
-        char2 = img[letter_top:letter_bot, 185:185 + letter_width]   
-        char3 = img[letter_top:letter_bot, 415:415 + letter_width]   
-        char4 = img[letter_top:letter_bot, 540:540 + letter_width]
+        char1 = img_bw[letter_top:letter_bot, 60:60 + letter_width]   
+        char2 = img_bw[letter_top:letter_bot, 185:185 + letter_width]   
+        char3 = img_bw[letter_top:letter_bot, 415:415 + letter_width]   
+        char4 = img_bw[letter_top:letter_bot, 540:540 + letter_width]
 
         #store the files in the correct location with the correct name
-        path = self.__path + "/cropped_chars"
-        cv2.imwrite(path + "/" + str(self.__im_counter) + "_char1.png", char1)
-        cv2.imwrite(path + "/" + str(self.__im_counter) + "_char2.png", char2)
-        cv2.imwrite(path + "/" + str(self.__im_counter) + "_char3.png", char3)
-        cv2.imwrite(path + "/" + str(self.__im_counter) + "_char4.png", char4)
+        # path = self.__path + "/cropped_chars"
+        # cv2.imwrite(path + "/" + str(self.__im_counter) + "_char1.png", char1)
+        # cv2.imwrite(path + "/" + str(self.__im_counter) + "_char2.png", char2)
+        # cv2.imwrite(path + "/" + str(self.__im_counter) + "_char3.png", char3)
+        # cv2.imwrite(path + "/" + str(self.__im_counter) + "_char4.png", char4)
 
         #crop the parking stall number
-        stall_number = img[300:500, 350:700]  
-        stall_number = cv2.resize(stall_number,(100,100))
-        cv2.imwrite(path + "/" + str(self.__im_counter) + "_stallnum.png", stall_number)
+        img_stall = img_bw[300:500, 350:700]  
+        img_stall = cv2.resize(img_stall,(100,100))
+        #cv2.imwrite(path + "/" + str(self.__im_counter) + "_stallnum.png", img_stall)
 
-        print("Plate parsed!")
-
-        # cv2.imshow("number",stall_number)
-        # cv2.waitKey(0)
+        return [char1, char2, char3, char4, img_stall]
+        #print("Plate parsed!")
     

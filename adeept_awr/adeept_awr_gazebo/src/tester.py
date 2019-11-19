@@ -12,6 +12,7 @@ for filename in os.listdir('images_pre'):
     print(filename + " is testing plate detection")
     lp.license_finder(cv2.imread('images_pre/'+filename))
 
-# for filename in os.listdir('cropped_plates'):
-#     print(filename +" is testing character parsing")
-#     parse_plate(filename)
+for filename in os.listdir('cropped_plates'):
+    print(filename +" is testing character parsing")
+    chars = lp.parse_plate(cv2.imread('cropped_plates/'+filename))
+    
