@@ -68,7 +68,8 @@ class LicenseProcessor:
                 y_max = np.max([y1, y2])
                 y_range = y_max - y_min
 
-                #test lines   
+                #test lines
+                # TODO what iff tl1/tl2 are off screen?
                 tl1 = img[y_min:y_max,x1 - 5]
                 tl2 = img[y_min:y_max,x1 + 5]
                 
@@ -171,10 +172,10 @@ class LicenseProcessor:
         
         self.__im_counter += 1
         #save the image to the images_post folder
-        path = self.__path + "/cropped_plates"
-        cv2.imwrite(path + "/" + str(self.__im_counter) + ".png", dst)
+        # path = self.__path + "/cropped_plates"
+        # cv2.imwrite(path + "/" + str(self.__im_counter) + ".png", dst)
         #cv2.imwrite(path + "/" + str(self.__im_counter) + "_og" + ".png", img)
-        print("License plate found")
+        # print("License plate found")
         self.__img_mem = dst
 
         # #for testing show the images
@@ -193,7 +194,7 @@ class LicenseProcessor:
 
         #turn the image to B&W
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        (thresh, img_bw) = cv2.threshold(img_gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+        (thresh, img_bw) = cv2.threshold(img_gray, 128, 255, cv2.THRESH_BINARY)# | cv2.THRESH_OTSU)
 
         height, width, channels = img.shape
         letter_top, letter_bot, letter_height = 600, 700, 100
@@ -215,7 +216,7 @@ class LicenseProcessor:
         #crop the parking stall number
         img_stall = img_bw[300:500, 350:700]  
         img_stall = cv2.resize(img_stall,(100,100))
-        #cv2.imwrite(path + "/" + str(self.__im_counter) + "_stallnum.png", img_stall)
+        # cv2.imwrite(path + "/" + str(self.__im_counter) + "_stallnum.png", img_stall)
 
         return [char1, char2, char3, char4, img_stall]
         #print("Plate parsed!")
