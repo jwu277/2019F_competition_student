@@ -8,6 +8,7 @@ class LicenseProcessor:
     def __init__(self):
 
         self.__im_counter = 0 # for testing, increments every time license_finder is called
+        self.__im_counter_parse = 0 #used for saving unique names to files of parsed characters
         self.__path = os.path.dirname(os.path.abspath(__file__))
         self.__img_mem = None # should be named lp_mem... TODO
 
@@ -19,7 +20,7 @@ class LicenseProcessor:
 
     #license_finder takes an image and determines if there is a parking spot with a license plate present in it
     #@Param
-    #   filename: the name of the file to locate license plates in
+    #   img: the image to detect a license plate in
     #@Returns
     #   True iff a plate was found, and stores the new image in "cropped_plates"
     #   False iff there are no plates in the image
@@ -96,7 +97,7 @@ class LicenseProcessor:
 
                             mask[y1,x1] = [255, 0, 255]
                             mask[y2,x2] = [255, 0, 255]
-        # print("DAMN")
+
         #check to see if a license plate was found in the image, if not, return 0
         if len(pts) != 4:
             #print(filename + " has no plate")
@@ -169,31 +170,35 @@ class LicenseProcessor:
         M = cv2.getPerspectiveTransform(un_transformed_points, transformed_points)
         dst = cv2.warpPerspective(img,M,(xp4,yp4))
         
-        self.__im_counter += 1
-        #save the image to the images_post folder
-        path = self.__path + "/cropped_plates"
-        cv2.imwrite(path + "/" + str(self.__im_counter) + ".png", dst)
+        #save the image to the images_post folder, change the picture iterator until it does not overwrite another image
+        path = self.__path + "/cropped_plates" + "/plate" + str(self.__im_counter) + ".png"
+
+        while os.path.exists(path):
+            self.__im_counter += 1
+            path = self.__path + "/cropped_plates" + "/plate" + str(self.__im_counter) + ".png"
+
+        cv2.imwrite(path, dst)
+
         #cv2.imwrite(path + "/" + str(self.__im_counter) + "_og" + ".png", img)
-        print("License plate found")
+        #print("License plate found")
         self.__img_mem = dst
 
         # #for testing show the images
-        # plt.imshow(dst)
-        # plt.show()
+        #plt.imshow(dst)
+        #plt.show()
         return True
 
     #Takes a license plate image and crops it with individual plate letters and the parking stall number
     #@Param:
-    #   filename: the name of the license plate image
+    #   img: the image of a license plate to be parsed
     #@Returns:
-    #   True iff the image was succesfully parsed
-    #   False iff the image parsing failed
+    #   A list with len(list) = 5 in the order [char1, char2, char3, char4, parking stall number] where the elements are B&W images of the plate numbers
     def parse_plate(self, img):
         #img = cv2.imread('cropped_plates/' + filename)
 
         #turn the image to B&W
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        (thresh, img_bw) = cv2.threshold(img_gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+        (thresh, img_bw) = cv2.threshold(img_gray, 128, 255, cv2.THRESH_BINARY ) #| cv2.THRESH_OTSU after cv2.thresh_binary
 
         height, width, channels = img.shape
         letter_top, letter_bot, letter_height = 600, 700, 100
@@ -205,18 +210,62 @@ class LicenseProcessor:
         char3 = img_bw[letter_top:letter_bot, 415:415 + letter_width]   
         char4 = img_bw[letter_top:letter_bot, 540:540 + letter_width]
 
-        #store the files in the correct location with the correct name
+        # #store the files in the correct location with the correct name
         # path = self.__path + "/cropped_chars"
-        # cv2.imwrite(path + "/" + str(self.__im_counter) + "_char1.png", char1)
-        # cv2.imwrite(path + "/" + str(self.__im_counter) + "_char2.png", char2)
-        # cv2.imwrite(path + "/" + str(self.__im_counter) + "_char3.png", char3)
-        # cv2.imwrite(path + "/" + str(self.__im_counter) + "_char4.png", char4)
+        # cv2.imwrite(path + "/" + str(self.__im_counter_parse) + "_char1.png", char1)
+        # cv2.imwrite(path + "/" + str(self.__im_counter_parse) + "_char2.png", char2)
+        # cv2.imwrite(path + "/" + str(self.__im_counter_parse) + "_char3.png", char3)
+        # cv2.imwrite(path + "/" + str(self.__im_counter_parse) + "_char4.png", char4)
 
+        # self.__im_counter_parse += 1
         #crop the parking stall number
         img_stall = img_bw[300:500, 350:700]  
         img_stall = cv2.resize(img_stall,(100,100))
-        #cv2.imwrite(path + "/" + str(self.__im_counter) + "_stallnum.png", img_stall)
+        #cv2.imwrite(path + "/" + str(self.__im_counter_parse) + "_stallnum.png", img_stall)
 
         return [char1, char2, char3, char4, img_stall]
         #print("Plate parsed!")
     
+    
+    #used to generate the testing dataset. This is required to keep the naming of the 
+    def parse_plate_test_set(self, filename):
+        img = cv2.imread('cropped_plates/' + filename)
+
+        #turn the image to B&W
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        (thresh, img_bw) = cv2.threshold(img_gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU) #| cv2.THRESH_OTSU after cv2.thresh_binary
+
+        height, width, channels = img.shape
+        letter_top, letter_bot, letter_height = 600, 700, 100
+        letter_width = 100
+
+        #crop all of the characters in the license plate
+        char1 = img_bw[letter_top:letter_bot, 60:60 + letter_width]   
+        char2 = img_bw[letter_top:letter_bot, 185:185 + letter_width]   
+        char3 = img_bw[letter_top:letter_bot, 415:415 + letter_width]   
+        char4 = img_bw[letter_top:letter_bot, 540:540 + letter_width]
+        #crop the parking stall number
+        img_stall = img_bw[300:500, 350:700]  
+        img_stall = cv2.resize(img_stall,(100,100))
+
+        imgs = [char1, char2, char3, char4, img_stall]
+
+        #allow the user to change the names of the images. This is done by showing the original, and then taking keyboard inputs a-z (lc) and 0-9
+        cv2.imshow('Rename: ' + filename,img)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+        cv2.waitKey(1)
+        #A list of the characters in the image
+        chars = raw_input("Enter the plate name: ")
+
+        #store the files in the correct location with the correct name without overwriting previous files
+        for i in range(5):
+            j = 0
+            path = self.__path + "/cropped_chars" + "/" + chars[i] + "_" + str(j) + ".png"
+
+            while os.path.exists(path):
+                j += 1
+                path = self.__path + "/cropped_chars" + "/" + chars[i] + "_" + str(j) + ".png"
+
+            cv2.imwrite(path, imgs[i])
+        
