@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 from datetime import datetime
 from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtCore import (Qt, pyqtSignal)
+from PyQt5.QtGui import (QPixmap)
+from PyQt5.QtCore import (Qt, QTimer, pyqtSignal)
 from std_msgs.msg import String
 from python_qt_binding import loadUi
 
@@ -18,6 +19,9 @@ class Window(QtWidgets.QMainWindow):
     def __init__(self):
         super(Window, self).__init__()
         loadUi("./score_tracker.ui", self)
+
+        pixmap = QPixmap('ENPH_vs_UBC_Parking.svg')
+        self.label_QL.setPixmap(pixmap)
 
         # Populate log file name
         now = datetime.now()
@@ -40,6 +44,10 @@ class Window(QtWidgets.QMainWindow):
                     break
                 i += 1
 
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.SLOT_timer_update)
+        self.elapsed_time_s = 0
+
         # Connect widgets
         self.penalty_vehicle_QPB.clicked.connect(self.SLOT_penalty_vehicle)
         self.penalty_pedestrian_QPB.clicked.connect(self.SLOT_penalty_pedestrian)
@@ -47,9 +55,12 @@ class Window(QtWidgets.QMainWindow):
 
         self.message_received_signal.connect(self.SLOT_message_received)
 
+        self.start_timer_QPB.clicked.connect(self.SLOT_start_timer)
+
+        # Set-up ROS subscribers
         self.sub = rospy.Subscriber("license_plate", String, 
                                     self.licensePlate_callback)
-        rospy.init_node('my_listener')
+        rospy.init_node('competition_listener')
 
 
     def licensePlate_callback(self, data):
@@ -61,44 +72,12 @@ class Window(QtWidgets.QMainWindow):
         date_time = now.strftime("%H:%M:%S")
         log_output = "<font color='blue'>{}</font>: {}".format(date_time, message)
         self.comms_log_QTE.append(log_output)
+        # self.comms_log_QTE.insertHtml(log_output)
 
         log_file_content = self.comms_log_QTE.toPlainText()
 
         with open(self.log_file_path, "w") as html_file:
             html_file.write(log_file_content)
-
-
-    def SLOT_penalty_pedestrian(self):
-        numEvents       = int(self.penalties_scores_QTW.item(1, 1).text()) + 1
-        penaltyPerEvent = int(self.penalties_scores_QTW.item(1, 2).text())
-        penaltyTotal    = numEvents * penaltyPerEvent
-        self.penalties_scores_QTW.item(1, 1).setText(str(numEvents))
-        self.penalties_scores_QTW.item(1, 3).setText(str(penaltyTotal))
-
-        self.log_msg("Penalty: pedestrian collision: -10 pts")
-        self.update_penalty_total()
-
-
-    def SLOT_penalty_track(self):
-        numEvents       = int(self.penalties_scores_QTW.item(2, 1).text()) + 1
-        penaltyPerEvent = int(self.penalties_scores_QTW.item(2, 2).text())
-        penaltyTotal    = numEvents * penaltyPerEvent
-        self.penalties_scores_QTW.item(2, 1).setText(str(numEvents))
-        self.penalties_scores_QTW.item(2, 3).setText(str(penaltyTotal))
-
-        self.log_msg("Penalty: track limit: -2 pts")
-        self.update_penalty_total()
-
-
-    def SLOT_penalty_vehicle(self):
-        numEvents       = int(self.penalties_scores_QTW.item(0, 1).text()) + 1
-        penaltyPerEvent = int(self.penalties_scores_QTW.item(0, 2).text())
-        penaltyTotal    = numEvents * penaltyPerEvent
-        self.penalties_scores_QTW.item(0, 1).setText(str(numEvents))
-        self.penalties_scores_QTW.item(0, 3).setText(str(penaltyTotal))
-
-        self.log_msg("Penalty: vehicle collision: -5 pts")
-        self.update_penalty_total()
 
 
     def SLOT_message_received(self, license_string):
@@ -137,6 +116,55 @@ class Window(QtWidgets.QMainWindow):
             self.log_msg("Awarded: {} pts".format(-5))
 
         self.update_license_total()
+
+
+    def SLOT_penalty_pedestrian(self):
+        numEvents       = int(self.penalties_scores_QTW.item(1, 1).text()) + 1
+        penaltyPerEvent = int(self.penalties_scores_QTW.item(1, 2).text())
+        penaltyTotal    = numEvents * penaltyPerEvent
+        self.penalties_scores_QTW.item(1, 1).setText(str(numEvents))
+        self.penalties_scores_QTW.item(1, 3).setText(str(penaltyTotal))
+
+        self.log_msg("Penalty: pedestrian collision: -10 pts")
+        self.update_penalty_total()
+
+
+    def SLOT_penalty_track(self):
+        numEvents       = int(self.penalties_scores_QTW.item(2, 1).text()) + 1
+        penaltyPerEvent = int(self.penalties_scores_QTW.item(2, 2).text())
+        penaltyTotal    = numEvents * penaltyPerEvent
+        self.penalties_scores_QTW.item(2, 1).setText(str(numEvents))
+        self.penalties_scores_QTW.item(2, 3).setText(str(penaltyTotal))
+
+        self.log_msg("Penalty: track limit: -2 pts")
+        self.update_penalty_total()
+
+
+    def SLOT_penalty_vehicle(self):
+        numEvents       = int(self.penalties_scores_QTW.item(0, 1).text()) + 1
+        penaltyPerEvent = int(self.penalties_scores_QTW.item(0, 2).text())
+        penaltyTotal    = numEvents * penaltyPerEvent
+        self.penalties_scores_QTW.item(0, 1).setText(str(numEvents))
+        self.penalties_scores_QTW.item(0, 3).setText(str(penaltyTotal))
+
+        self.log_msg("Penalty: vehicle collision: -5 pts")
+        self.update_penalty_total()
+
+
+    def SLOT_start_timer(self):
+        self.elapsed_time_s = 0
+        self.elapsed_time_value_QL.setText(
+            "{:03d} sec".format(self.elapsed_time_s))
+        self.timer.start(1000)
+        self.log_msg("Timer started.")
+
+
+    def SLOT_timer_update(self):
+        self.elapsed_time_s += 1
+        self.elapsed_time_value_QL.setText(
+            "{:03d} sec".format(self.elapsed_time_s))
+        if (self.elapsed_time_s == 120):
+            self.log_msg("Out of time: 2 minutes.")
 
 
     def update_license_total(self):
