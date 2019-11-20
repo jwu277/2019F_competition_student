@@ -58,7 +58,7 @@ with open(path + "plates.csv", 'w') as plates_file:
         QR_img = cv2.resize(QR_img, (600, 600), interpolation=cv2.INTER_AREA)
 
         # Create parking spot label
-        s = "P" + str(i)
+        s = "P" + str(i+1)
         parking_spot = 255 * np.ones(shape=[600, 600, 3], dtype=np.uint8)
         cv2.putText(parking_spot, s, (30, 450), cv2.FONT_HERSHEY_PLAIN, 28,
                     (0, 0, 0), 30, cv2.LINE_AA)

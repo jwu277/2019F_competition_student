@@ -69,7 +69,8 @@ class LicenseProcessor:
                 y_max = np.max([y1, y2])
                 y_range = y_max - y_min
 
-                #test lines   
+                #test lines
+                # TODO what iff tl1/tl2 are off screen?
                 tl1 = img[y_min:y_max,x1 - 5]
                 tl2 = img[y_min:y_max,x1 + 5]
                 
@@ -198,7 +199,7 @@ class LicenseProcessor:
 
         #turn the image to B&W
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        (thresh, img_bw) = cv2.threshold(img_gray, 128, 255, cv2.THRESH_BINARY ) #| cv2.THRESH_OTSU after cv2.thresh_binary
+        (thresh, img_bw) = cv2.threshold(img_gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU) #| cv2.THRESH_OTSU after cv2.thresh_binary
 
         height, width, channels = img.shape
         letter_top, letter_bot, letter_height = 600, 700, 100

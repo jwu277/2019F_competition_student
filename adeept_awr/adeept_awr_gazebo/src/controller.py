@@ -4,6 +4,7 @@ import rospy
 
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import Twist
+from std_msgs.msg import String
 
 from cv_bridge import CvBridge
 import cv2
@@ -19,10 +20,11 @@ class AdeeptAWRController:
 
     ## Anything that looks like it can be tuned probably can be tuned...
 
-    def __init__(self, src_camera_topic, dst_vel_topic):
+    def __init__(self, src_camera_topic, dst_vel_topic, dst_plate_topic):
 
         self.__src_camera_topic = src_camera_topic
         self.__dst_vel_topic = dst_vel_topic
+        self.__dst_plate_topic = dst_plate_topic
 
         if not self.__src_camera_topic:
           raise ValueError("source topic is an empty string")
@@ -31,7 +33,8 @@ class AdeeptAWRController:
           raise ValueError("dest topic is an empty string")
 
         self.camera_sub = rospy.Subscriber(self.__src_camera_topic, Image, self.callback, queue_size=1)
-        self.vel_pub = rospy.Publisher(self.__dst_vel_topic, Twist, queue_size = 1)
+        self.vel_pub = rospy.Publisher(self.__dst_vel_topic, Twist, queue_size=1)
+        self.plate_pub = rospy.Publisher(self.__dst_plate_topic, String, queue_size=1)
 
         # TODO Temporary: state_counter = -1 is initial wait
         self.__state_counter = -1
@@ -312,6 +315,7 @@ class AdeeptAWRController:
         # ttt = rospy.get_time()
         if self.license_processor.license_finder(img):
             self.license_processor.parse_plate(self.license_processor.mem())
+            self.plate_pub.publish(String("YOUR MSG HERE"))
         # print(rospy.get_time() - ttt)
 
 
@@ -381,7 +385,7 @@ class AdeeptAWRController:
 if __name__ == '__main__':
     try:
         rospy.init_node('adeept_awr_controller', anonymous=True)
-        ad = AdeeptAWRController(rospy.get_param('~src_topic'),rospy.get_param('~dst_topic'))
+        ad = AdeeptAWRController(rospy.get_param('~src_topic'), rospy.get_param('~dst_topic'), rospy.get_param('~dst_topic2'))
         rate = rospy.Rate(rospy.get_param('~publish_rate', 10))
         while not rospy.is_shutdown():
             rate.sleep()

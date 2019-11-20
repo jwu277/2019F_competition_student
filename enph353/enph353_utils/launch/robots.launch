@@ -10,6 +10,7 @@
 		<node pkg="adeept_awr_gazebo" type="controller.py" name="adeept_awr_controller" output="screen">
 			<param name="src_topic" value="pi_camera/image_raw"/>
 			<param name="dst_topic" value="cmd_vel"/>
+			<param name="dst_topic2" value="license_plate"/>
 		</node>
 		<node pkg="adeept_awr_gazebo" type="velocity_clamp.py" name="fake_adeept_driver" output="screen">
 			<param name="src_topic" value="cmd_vel"/>
