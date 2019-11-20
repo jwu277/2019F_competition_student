@@ -3,6 +3,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.python.keras.backend import set_session
+
+sess = tf.Session()
+graph = tf.get_default_graph()
+
+set_session(sess)
+
 class LicenseProcessor:
 
     def __init__(self):
@@ -14,6 +23,10 @@ class LicenseProcessor:
 
         self.__LP_RECOG_GRAY_THRESH = 0.7 # proportion of adjacent grayscale pixels needed
         self.__GRAYSCALE_DELTA_THRESH = 0x00 # max difference in BGR values for grayscale pixels
+
+        self.__cnn = tf.keras.models.load_model(self.__path + '/char_sorter.h5', custom_objects={
+            'RMSprop': lambda **kwargs: hvd.DistributedOptimizer(keras.optimizers.RMSprop(**kwargs))})
+        self.__cnn._make_predict_function()
     
     def mem(self):
         return self.__img_mem
@@ -172,13 +185,13 @@ class LicenseProcessor:
         dst = cv2.warpPerspective(img,M,(xp4,yp4))
         
         #save the image to the images_post folder, change the picture iterator until it does not overwrite another image
-        path = self.__path + "/cropped_plates" + "/plate" + str(self.__im_counter) + ".png"
+        # path = self.__path + "/cropped_plates" + "/plate" + str(self.__im_counter) + ".png"
 
-        while os.path.exists(path):
-            self.__im_counter += 1
-            path = self.__path + "/cropped_plates" + "/plate" + str(self.__im_counter) + ".png"
+        # while os.path.exists(path):
+        #     self.__im_counter += 1
+        #     path = self.__path + "/cropped_plates" + "/plate" + str(self.__im_counter) + ".png"
 
-        cv2.imwrite(path, dst)
+        # cv2.imwrite(path, dst)
 
         #cv2.imwrite(path + "/" + str(self.__im_counter) + "_og" + ".png", img)
         #print("License plate found")
@@ -269,4 +282,36 @@ class LicenseProcessor:
                 path = self.__path + "/cropped_chars" + "/" + chars[i] + "_" + str(j) + ".png"
 
             cv2.imwrite(path, imgs[i])
+
+
+    def predict_plate(self, cropped_chars):
+
+        # TODO: currently one at a time
+
+        # keras.backend.clear_session()
+        
+        def num_to_char(n):
+            if n <= 9:
+                # digit
+                return str(n)
+            else:
+                # letter
+                return chr(n + 55)
+        
+        # async workaround
+        global sess
+        global graph
+        with graph.as_default():
+
+            set_session(sess)
+
+            hots = self.__cnn.predict(cropped_chars[:,:,:,np.newaxis])
+
+            nums = np.argmax(hots, axis=1).tolist()
+
+            chars = list(map(lambda n: num_to_char(n), nums))
+
+            return chars
+        
+        # TODO: default None return?
         

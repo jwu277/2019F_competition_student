@@ -314,8 +314,13 @@ class AdeeptAWRController:
         # TODO
         # ttt = rospy.get_time()
         if self.license_processor.license_finder(img):
-            self.license_processor.parse_plate(self.license_processor.mem())
-            self.plate_pub.publish(String("YOUR MSG HERE"))
+
+            lp_chars = np.array(self.license_processor.parse_plate(self.license_processor.mem()))
+            prediction = self.license_processor.predict_plate(lp_chars)
+            # print(prediction)
+            self.plate_pub.publish(String("LM&JW,teampw,{0},{1}{2}{3}{4}".format(
+                prediction[4], prediction[0], prediction[1], prediction[2], prediction[3])))
+
         # print(rospy.get_time() - ttt)
 
 
