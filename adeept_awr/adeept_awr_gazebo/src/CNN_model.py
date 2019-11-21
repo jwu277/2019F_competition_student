@@ -19,11 +19,17 @@ from ipywidgets import interact
 import ipywidgets as ipywidgets
 
 class CNNModel:
+
     def __init__(self):
         self.conv_model = models.Sequential()
 
     def test_nn(self):
+        #load the models training data
         model = models.load_model('char_sorter.h5')
+
+        #needs to be BW TODO
+        for filename in os.listdir('cropped_chars'):
+            print(model.predict_Class(cv2.imread('cropped_chars/' + filename)))
 
     def train(self):
         path = os.getcwd() + "/cropped_chars"
@@ -70,7 +76,7 @@ class CNNModel:
 
         #conv_model = models.Sequential()
         self.conv_model.add(layers.Conv2D(32, (3, 3), activation='relu',
-                                    input_shape=(100, 100, 1)))
+                                    input_shape=(220, 100, 1)))
         self.conv_model.add(layers.MaxPooling2D((2, 2)))
         self.conv_model.add(layers.Conv2D(64, (3, 3), activation='relu'))
         self.conv_model.add(layers.MaxPooling2D((2, 2)))
@@ -98,7 +104,7 @@ class CNNModel:
 
         history_conv = self.conv_model.fit(X_dataset, Y_dataset, 
                                     validation_split=VALIDATION_SPLIT, 
-                                    epochs=20, 
+                                    epochs=100,  #changed to 40 epochs
                                     batch_size=16)
 
         self.conv_model.save('char_sorter.h5')
