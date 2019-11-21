@@ -195,36 +195,31 @@ class LicenseProcessor:
     #@Returns:
     #   A list with len(list) = 5 in the order [char1, char2, char3, char4, parking stall number] where the elements are B&W images of the plate numbers
     def parse_plate(self, img):
-        #img = cv2.imread('cropped_plates/' + filename)
+        rows,cols,ch = img.shape
 
         #turn the image to B&W
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        (thresh, img_bw) = cv2.threshold(img_gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU) #| cv2.THRESH_OTSU after cv2.thresh_binary
+        # (thresh, img_bw) = cv2.threshold(img_gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU) #| cv2.THRESH_OTSU after cv2.thresh_binary
 
         height, width, channels = img.shape
-        letter_top, letter_bot, letter_height = 600, 700, 100
+        letter_top, letter_bot = 600, rows
+        letter_height = letter_bot - letter_top
         letter_width = 100
 
-        #crop all of the characters in the license plate
-        char1 = img_bw[letter_top:letter_bot, 60:60 + letter_width]   
-        char2 = img_bw[letter_top:letter_bot, 185:185 + letter_width]   
-        char3 = img_bw[letter_top:letter_bot, 415:415 + letter_width]   
-        char4 = img_bw[letter_top:letter_bot, 540:540 + letter_width]
+        #crop the greyscale images
+        char1 = img_gray[letter_top:letter_bot, 60:60 + letter_width]   
+        char2 = img_gray[letter_top:letter_bot, 185:185 + letter_width]   
+        char3 = img_gray[letter_top:letter_bot, 415:415 + letter_width]   
+        char4 = img_gray[letter_top:letter_bot, 540:540 + letter_width]
 
-        # #store the files in the correct location with the correct name
-        # path = self.__path + "/cropped_chars"
-        # cv2.imwrite(path + "/" + str(self.__im_counter_parse) + "_char1.png", char1)
-        # cv2.imwrite(path + "/" + str(self.__im_counter_parse) + "_char2.png", char2)
-        # cv2.imwrite(path + "/" + str(self.__im_counter_parse) + "_char3.png", char3)
-        # cv2.imwrite(path + "/" + str(self.__im_counter_parse) + "_char4.png", char4)
-
-        # self.__im_counter_parse += 1
         #crop the parking stall number
-        img_stall = img_bw[300:500, 350:700]  
-        img_stall = cv2.resize(img_stall,(100,100))
-        #cv2.imwrite(path + "/" + str(self.__im_counter_parse) + "_stallnum.png", img_stall)
+        img_stall = img_gray[300:500, 350:700] #700 
+        img_stall = cv2.resize(img_stall,(letter_width,letter_width)) #keep the license plate square to prevent stretching
+        #pad the image so it is the same size as all the other images, this is done by making a gray array of the correct size and adding the values onto the image
+        img_stall_new = 90 * np.ones((letter_height,letter_width))
+        img_stall_new[:100] = img_stall
 
-        return [char1, char2, char3, char4, img_stall]
+        return [char1, char2, char3, char4, img_stall_new]
         #print("Plate parsed!")
     
     
@@ -232,24 +227,32 @@ class LicenseProcessor:
     def parse_plate_test_set(self, filename):
         img = cv2.imread('cropped_plates/' + filename)
 
+        rows,cols,ch = img.shape
+
         #turn the image to B&W
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        (thresh, img_bw) = cv2.threshold(img_gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU) #| cv2.THRESH_OTSU after cv2.thresh_binary
+        # (thresh, img_bw) = cv2.threshold(img_gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU) #| cv2.THRESH_OTSU after cv2.thresh_binary
 
         height, width, channels = img.shape
-        letter_top, letter_bot, letter_height = 600, 700, 100
+        letter_top, letter_bot = 600, rows
+        letter_height = letter_bot - letter_top
         letter_width = 100
 
-        #crop all of the characters in the license plate
-        char1 = img_bw[letter_top:letter_bot, 60:60 + letter_width]   
-        char2 = img_bw[letter_top:letter_bot, 185:185 + letter_width]   
-        char3 = img_bw[letter_top:letter_bot, 415:415 + letter_width]   
-        char4 = img_bw[letter_top:letter_bot, 540:540 + letter_width]
-        #crop the parking stall number
-        img_stall = img_bw[300:500, 350:700]  
-        img_stall = cv2.resize(img_stall,(100,100))
+        #crop the greyscale images
+        char1 = img_gray[letter_top:letter_bot, 60:60 + letter_width]   
+        char2 = img_gray[letter_top:letter_bot, 185:185 + letter_width]   
+        char3 = img_gray[letter_top:letter_bot, 415:415 + letter_width]   
+        char4 = img_gray[letter_top:letter_bot, 540:540 + letter_width]
 
-        imgs = [char1, char2, char3, char4, img_stall]
+
+        #crop the parking stall number
+        img_stall = img_gray[300:500, 350:700] #700 
+        img_stall = cv2.resize(img_stall,(letter_width,letter_width)) #keep the license plate square to prevent stretching
+        #pad the image so it is the same size as all the other images
+        img_stall_new = 90 * np.ones((letter_height,letter_width))
+        img_stall_new[:100] = img_stall
+
+        imgs = [char1, char2, char3, char4, img_stall_new]
 
         #allow the user to change the names of the images. This is done by showing the original, and then taking keyboard inputs a-z (lc) and 0-9
         cv2.imshow('Rename: ' + filename,img)
