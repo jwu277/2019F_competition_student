@@ -335,8 +335,8 @@ class AdeeptAWRController:
         # ttt = rospy.get_time()
         if self.license_processor.license_finder(img):
 
-            ttt = rospy.get_time()
-            print("=======")
+            # ttt = rospy.get_time()
+            # print("=======")
 
             # madeit = True
 
@@ -357,16 +357,10 @@ class AdeeptAWRController:
             # Indexing:
             # Stallnum: 4, LP: 0123 (XY67)
 
-            lp_chars = np.array(self.license_processor.parse_plate(self.license_processor.mem()))
+            self.pub_vel_msg(0, 0)
 
-            pred1 = self.license_processor.predict_plate(lp_chars[0:2], True)
-            print(rospy.get_time() - ttt)
-            ttt = rospy.get_time()
-            pred2 = self.license_processor.predict_plate(lp_chars[2:], False)
-            print(rospy.get_time() - ttt)
-            ttt = rospy.get_time()
-            prediction = np.hstack((pred1, pred2))
-            print(rospy.get_time() - ttt)
+            lp_chars = np.array(self.license_processor.parse_plate(self.license_processor.mem()))
+            prediction = np.hstack((self.license_processor.predict_plate(lp_chars[0:2], True), self.license_processor.predict_plate(lp_chars[2:], False)))
 
             # print(prediction)
 
