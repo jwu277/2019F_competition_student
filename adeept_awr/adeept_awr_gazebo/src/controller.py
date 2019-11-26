@@ -97,6 +97,10 @@ class AdeeptAWRController:
         # turn complete
         self.__TURN_TIME = 3.0
 
+        # don't drive when cnn is rendering
+        # self.__CNN_PAUSE_TIME = 1.0
+        # self.__CNN_DEBOUNCE_TIME = 5.0
+
 
     def pub_vel_msg(self, lin, ang):
 
@@ -129,6 +133,10 @@ class AdeeptAWRController:
 
         # wait
         self.waiting = True
+
+        # self.cnn_waiting = False
+        # self.cnn_wait_timer = rospy.get_time()
+        # self.cnn_debounce_timer = rospy.get_time()
         
         # Add more state variables
 
@@ -144,7 +152,10 @@ class AdeeptAWRController:
 
     def callback(self, msg):
 
+        # looptime = rospy.get_time()
+
         # print(rospy.get_time() - msg.header.stamp.secs)
+
         img = self.bridge.imgmsg_to_cv2(msg, "bgr8")
 
         # Waiting state
@@ -155,7 +166,7 @@ class AdeeptAWRController:
         # TODO: remove initial wait (kept rn for testing)
         if self.__state_counter == -1:
 
-            if rospy.get_time() - self.__timer >= 4.0:
+            if rospy.get_time() - self.__timer >= 1.0:
                 self.__state_counter += 1
                 self.reinit_state()
                 return
@@ -194,6 +205,10 @@ class AdeeptAWRController:
 
         # if rospy.get_time() - self.__timer >= self.__state_times[self.__state_counter]:
         #     next_state(*self.__state_speeds[self.__state_counter])
+
+        # print(rospy.get_time() - msg.header.stamp.secs)
+        # if rospy.get_time() - looptime > 0.1:
+        #     print(rospy.get_time() - looptime)
 
 
     #############
@@ -312,29 +327,65 @@ class AdeeptAWRController:
             # drive forward
             self.pub_vel_msg(1, 0)
         
+        # tt = rospy.get_time()
+        # madeit = False
+
         ## LICENSE PLATE DETECTION
         # TODO
         # ttt = rospy.get_time()
         if self.license_processor.license_finder(img):
 
+            ttt = rospy.get_time()
+            print("=======")
+
+            # madeit = True
+
+            # if self.cnn_waiting:
+            #     if rospy.get_time() - self.cnn_wait_timer > self.__CNN_PAUSE_TIME:
+            #         self.cnn_waiting = False
+            #         self.cnn_debounce_timer = rospy.get_time()
+            #     else:
+            #         self.pub_vel_msg(0, 0)
+            #     self.license_processor.savemem("_clear")
+            # elif rospycnn.get_time() - self.cnn_debounce_timer > self.__CNN_DEBOUNCE_TIME:
+            #     self.cnn_wait_timer = rospy.get_time()
+            #     self.cnn_waiting = True
+            
+            # if not self.cnn_waiting:
+            #     self.license_processor.savemem()    
+
+            # Indexing:
+            # Stallnum: 4, LP: 0123 (XY67)
+
             lp_chars = np.array(self.license_processor.parse_plate(self.license_processor.mem()))
-            prediction = self.license_processor.predict_plate(lp_chars)
+
+            pred1 = self.license_processor.predict_plate(lp_chars[0:2], True)
+            print(rospy.get_time() - ttt)
+            ttt = rospy.get_time()
+            pred2 = self.license_processor.predict_plate(lp_chars[2:], False)
+            print(rospy.get_time() - ttt)
+            ttt = rospy.get_time()
+            prediction = np.hstack((pred1, pred2))
+            print(rospy.get_time() - ttt)
+
             # print(prediction)
 
-            # Plates are 0 indexed
-            
             def valid_prediction(pred):
                 # Parking spot 49 to 56
                 return ord(pred[4]) >= 49 and ord(pred[4]) <= 56 and ord(pred[3]) >= 48 and ord(pred[3]) <= 57 \
                     and ord(pred[2]) >= 48 and ord(pred[2]) <= 57 and ord(pred[1]) >= 65 and ord(pred[1]) <= 90 \
                     and ord(pred[0]) >= 65 and ord(pred[0]) <= 90
 
-            if True:# if valid_prediction(prediction): #and not self.license_spotted[int(prediction[4]) - 1]:
+            if valid_prediction(prediction): #and not self.license_spotted[int(prediction[4]) - 1]:
                 self.plate_pub.publish(String("LM&JW,teampw,{0},{1}{2}{3}{4}".format(
                     prediction[4], prediction[0], prediction[1], prediction[2], prediction[3])))
                 # self.license_spotted[int(prediction[4]) - 1] = True
+            
+            # if self.cnn_waiting:
+            #     return
 
-        # print(rospy.get_time() - ttt)
+        # if rospy.get_time() - tt > 0.05:
+        #     print(str(rospy.get_time() - tt) + ("M" if madeit else "k"))
 
 
     def turn(self):
