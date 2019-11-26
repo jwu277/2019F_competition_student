@@ -3,6 +3,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.python.keras.backend import set_session
+
+import rospy
+
+sess = tf.Session()
+graph = tf.get_default_graph()
+
+set_session(sess)
+
 class LicenseProcessor:
 
     def __init__(self):
@@ -12,11 +23,25 @@ class LicenseProcessor:
         self.__path = os.path.dirname(os.path.abspath(__file__))
         self.__img_mem = None # should be named lp_mem... TODO
 
+        self.__savemem_counter = 0
+
         self.__LP_RECOG_GRAY_THRESH = 0.7 # proportion of adjacent grayscale pixels needed
         self.__GRAYSCALE_DELTA_THRESH = 0x00 # max difference in BGR values for grayscale pixels
+
+        self.__cnn_letters = tf.keras.models.load_model(self.__path + '/sorter_chars_large.h5', custom_objects={
+            'RMSprop': lambda **kwargs: hvd.DistributedOptimizer(keras.optimizers.RMSprop(**kwargs))})
+        self.__cnn_digits= tf.keras.models.load_model(self.__path + '/sorter_timetrials.h5', custom_objects={
+            'RMSprop': lambda **kwargs: hvd.DistributedOptimizer(keras.optimizers.RMSprop(**kwargs))})
+
+        self.__cnn_letters._make_predict_function()
+        self.__cnn_digits._make_predict_function()
     
     def mem(self):
         return self.__img_mem
+    
+    def savemem(self, suffix=""):
+        cv2.imwrite(self.__path + "/cropped_plates" + "/lp_" + str(self.__savemem_counter) + suffix + ".png", self.__img_mem)
+        self.__savemem_counter += 1
 
     #license_finder takes an image and determines if there is a parking spot with a license plate present in it
     #@Param
@@ -172,13 +197,13 @@ class LicenseProcessor:
         dst = cv2.warpPerspective(img,M,(xp4,yp4))
         
         #save the image to the images_post folder, change the picture iterator until it does not overwrite another image
-        path = self.__path + "/cropped_plates" + "/plate" + str(self.__im_counter) + ".png"
+        # path = self.__path + "/cropped_plates" + "/plate_b_" + str(self.__im_counter) + ".png"
 
-        while os.path.exists(path):
-            self.__im_counter += 1
-            path = self.__path + "/cropped_plates" + "/plate" + str(self.__im_counter) + ".png"
+        # while os.path.exists(path):
+        #     self.__im_counter += 1
+        #     path = self.__path + "/cropped_plates" + "/plate_b_" + str(self.__im_counter) + ".png"
 
-        cv2.imwrite(path, dst)
+        # cv2.imwrite(path, dst)
 
         #cv2.imwrite(path + "/" + str(self.__im_counter) + "_og" + ".png", img)
         #print("License plate found")
@@ -198,6 +223,7 @@ class LicenseProcessor:
         rows,cols,ch = img.shape
 
         #turn the image to B&W
+        # img_gray = img
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         # (thresh, img_bw) = cv2.threshold(img_gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU) #| cv2.THRESH_OTSU after cv2.thresh_binary
 
@@ -272,4 +298,38 @@ class LicenseProcessor:
                 path = self.__path + "/cropped_chars" + "/" + chars[i] + "_" + str(j) + ".png"
 
             cv2.imwrite(path, imgs[i])
+
+
+    def predict_plate(self, cropped_chars, letters):
+
+        # letters = true means cnn the letters, false means cnn the digits
+
+        # keras.backend.clear_session()
+        
+        def num_to_char(n):
+            if n <= 9:
+                # digit
+                return str(n)
+            else:
+                # letter
+                return chr(n + 55)
+        
+        cnn = self.__cnn_letters if letters else self.__cnn_digits
+        
+        # async workaround
+        global sess
+        global graph
+        with graph.as_default():
+
+            set_session(sess)
+
+            hots = cnn.predict(cropped_chars[:,:,:,np.newaxis])
+
+            nums = np.argmax(hots, axis=1).tolist()
+
+            chars = list(map(lambda n: num_to_char(n), nums))
+
+            return chars
+        
+        # TODO: default None return?
         

@@ -22,10 +22,20 @@ class CNNModel:
 
     def __init__(self):
         self.conv_model = models.Sequential()
+        
+        self.__FNAME = 'sorter0.h5'
 
     def test_nn(self):
         #load the models training data
+<<<<<<< HEAD
         model = models.load_model('char_sorter.h5')
+=======
+        model = models.load_model(self.__FNAME)
+
+        #needs to be BW TODO
+        for filename in os.listdir('cropped_chars'):
+            print(model.predict_Class(cv2.imread('cropped_chars/' + filename)))
+>>>>>>> f1b79d88428e85c70434de996a37c06ddaa55b93
 
         #needs to be BW TODO
         for filename in os.listdir('cropped_chars'):
