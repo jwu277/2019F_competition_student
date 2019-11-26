@@ -32,7 +32,10 @@ class CNNModel:
             print(model.predict_Class(cv2.imread('cropped_chars/' + filename)))
 
     def train(self):
-        path = os.getcwd() + "/cropped_chars"
+        #path = os.getcwd() + "/cropped_chars"
+        #change the path depending on image locations
+        path = '/home/fizzer/ENPH353/Lab5/cropped_chars'
+
         #create the datasets
         dataset_orig = np.array([[np.array(Image.open(path + "/" + filename)), filename] \
                             for filename in os.listdir(path)])
@@ -104,10 +107,10 @@ class CNNModel:
 
         history_conv = self.conv_model.fit(X_dataset, Y_dataset, 
                                     validation_split=VALIDATION_SPLIT, 
-                                    epochs=65,  #changed to 40 epochs
+                                    epochs=7,  
                                     batch_size=16)
 
-        self.conv_model.save('char_sorter.h5')
+        self.conv_model.save('sorter_chars_large.h5')
 
         #plot the models history
         plt.plot(history_conv.history['loss'])
