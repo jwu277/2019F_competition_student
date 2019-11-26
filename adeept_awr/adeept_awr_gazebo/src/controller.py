@@ -324,15 +324,15 @@ class AdeeptAWRController:
             # Plates are 0 indexed
             
             def valid_prediction(pred):
-                # Parking spot 48 to 56
-                return ord(pred[4]) >= 48 and ord(pred[4]) <= 56 and ord(pred[3]) >= 48 and ord(pred[3]) <= 57 \
+                # Parking spot 49 to 56
+                return ord(pred[4]) >= 49 and ord(pred[4]) <= 56 and ord(pred[3]) >= 48 and ord(pred[3]) <= 57 \
                     and ord(pred[2]) >= 48 and ord(pred[2]) <= 57 and ord(pred[1]) >= 65 and ord(pred[1]) <= 90 \
                     and ord(pred[0]) >= 65 and ord(pred[0]) <= 90
 
-            if valid_prediction(prediction) and not self.license_spotted[int(prediction[4]) - 1]:
+            if True:# if valid_prediction(prediction): #and not self.license_spotted[int(prediction[4]) - 1]:
                 self.plate_pub.publish(String("LM&JW,teampw,{0},{1}{2}{3}{4}".format(
                     prediction[4], prediction[0], prediction[1], prediction[2], prediction[3])))
-                self.license_spotted[int(prediction[4]) - 1] = True
+                # self.license_spotted[int(prediction[4]) - 1] = True
 
         # print(rospy.get_time() - ttt)
 

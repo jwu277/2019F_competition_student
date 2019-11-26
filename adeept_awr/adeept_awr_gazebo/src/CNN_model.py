@@ -22,10 +22,12 @@ class CNNModel:
 
     def __init__(self):
         self.conv_model = models.Sequential()
+        
+        self.__FNAME = 'sorter0.h5'
 
     def test_nn(self):
         #load the models training data
-        model = models.load_model('char_sorter.h5')
+        model = models.load_model(self.__FNAME)
 
         #needs to be BW TODO
         for filename in os.listdir('cropped_chars'):
@@ -107,7 +109,7 @@ class CNNModel:
                                     epochs=100,  #changed to 40 epochs
                                     batch_size=16)
 
-        self.conv_model.save('char_sorter.h5')
+        self.conv_model.save(self.__FNAME)
 
         #plot the models history
         plt.plot(history_conv.history['loss'])
