@@ -245,20 +245,6 @@ class LicenseProcessor:
         img_stall_new = 90 * np.ones((letter_height,letter_width))
         img_stall_new[:100] = img_stall
 
-        #store the files in the correct location with the correct name
-        # path = self.__path + "/cropped_chars"
-        # cv2.imwrite(path + "/" + str(self.__im_counter_parse) + "_char1.png", char1)
-        # cv2.imwrite(path + "/" + str(self.__im_counter_parse) + "_char2.png", char2)
-        # cv2.imwrite(path + "/" + str(self.__im_counter_parse) + "_char3.png", char3)
-        # cv2.imwrite(path + "/" + str(self.__im_counter_parse) + "_char4.png", char4)
-
-        self.__im_counter_parse += 1
-        #crop the parking stall number
-        img_stall = img_gray[300:500, 350:700]  
-        img_stall = cv2.resize(img_stall,(100,100))
-        # cv2.imwrite(path + "/" + str(self.__im_counter_parse) + "_stallnum.png", img_stall)
-
-
         return [char1, char2, char3, char4, img_stall_new]
         #print("Plate parsed!")
     

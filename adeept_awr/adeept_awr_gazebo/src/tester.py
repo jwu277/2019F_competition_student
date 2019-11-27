@@ -11,8 +11,7 @@ lp = LicenseProcessor()
 
 CNN = CNNModel()
 CNN.train()
-
-
+#CNN.test_nn()
 
 # for filename in os.listdir('images_pre'):
 #     print(filename + " is testing plate detection")
