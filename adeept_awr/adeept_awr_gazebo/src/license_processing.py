@@ -28,13 +28,15 @@ class LicenseProcessor:
         self.__LP_RECOG_GRAY_THRESH = 0.7 # proportion of adjacent grayscale pixels needed
         self.__GRAYSCALE_DELTA_THRESH = 0x00 # max difference in BGR values for grayscale pixels
 
-        self.__cnn_letters = tf.keras.models.load_model(self.__path + '/sorter_chars_layers.h5', custom_objects={
+        self.__cnn_letters = tf.keras.models.load_model(self.__path + '/sorter_50x50_wack5.h5', custom_objects={
             'RMSprop': lambda **kwargs: hvd.DistributedOptimizer(keras.optimizers.RMSprop(**kwargs))})
-        self.__cnn_digits= tf.keras.models.load_model(self.__path + '/sorter_timetrials.h5', custom_objects={
+        self.__cnn_digits= tf.keras.models.load_model(self.__path + '/sorter50x50_nums.h5', custom_objects={
             'RMSprop': lambda **kwargs: hvd.DistributedOptimizer(keras.optimizers.RMSprop(**kwargs))})
 
         self.__cnn_letters._make_predict_function()
         self.__cnn_digits._make_predict_function()
+
+        self.__save_char_counter = 0
     
     def mem(self):
         return self.__img_mem
@@ -232,20 +234,43 @@ class LicenseProcessor:
         letter_height = letter_bot - letter_top
         letter_width = 100
 
+        # TODO: change digits too
+
         #crop the greyscale images
-        char1 = img_gray[letter_top:letter_bot, 60:60 + letter_width]   
-        char2 = img_gray[letter_top:letter_bot, 185:185 + letter_width]   
-        char3 = img_gray[letter_top:letter_bot, 415:415 + letter_width]   
-        char4 = img_gray[letter_top:letter_bot, 540:540 + letter_width]
+        # char1 = img_gray[letter_top:letter_bot, 60:60 + letter_width]   
+        # char2 = img_gray[letter_top:letter_bot, 185:185 + letter_width]   
+        # char3 = img_gray[letter_top:letter_bot, 415:415 + letter_width]   
+        # char4 = img_gray[letter_top:letter_bot, 540:540 + letter_width]
+
+        # resize
+        char1 = img_gray[letter_top:700, 60:60 + letter_width]
+        char2 = img_gray[letter_top:700, 185:185 + letter_width]
+        char3 = img_gray[letter_top:700, 415:415 + letter_width]   
+        char4 = img_gray[letter_top:700, 540:540 + letter_width]
+        char1 = cv2.resize(char1, (50, 50))
+        char2 = cv2.resize(char2, (50, 50))
+        char3 = cv2.resize(char3, (50, 50))
+        char4 = cv2.resize(char4, (50, 50))
 
         #crop the parking stall number
         img_stall = img_gray[300:500, 350:700] #700 
-        img_stall = cv2.resize(img_stall,(letter_width,letter_width)) #keep the license plate square to prevent stretching
+        img_stall = cv2.resize(img_stall,(50,50)) #keep the license plate square to prevent stretching
         #pad the image so it is the same size as all the other images, this is done by making a gray array of the correct size and adding the values onto the image
-        img_stall_new = 90 * np.ones((letter_height,letter_width))
-        img_stall_new[:100] = img_stall
+        # img_stall_new = 90 * np.ones((letter_height,letter_width))
+        # img_stall_new[:100] = img_stall
 
-        return [char1, char2, char3, char4, img_stall_new]
+        # save chars (temp/debugging)
+        path = self.__path + "/cropped_chars/"
+        # cv2.imwrite(path + "char_" + str(self.__save_char_counter) + "_c1.png", char1temp)
+        # cv2.imwrite(path + "char_" + str(self.__save_char_counter) + "_c2.png", char2temp)
+        # cv2.imwrite(path + "_" + str(self.__savemem_counter) + "_c3.png", char3)
+        # cv2.imwrite(path + "_" + str(self.__savemem_counter) + "_c4.png", char4)
+        cv2.imwrite(path + "_" + str(self.__savemem_counter) + "_stall.png", img_stall)
+        self.__save_char_counter += 1
+
+        # print(char1.shape)
+        
+        return [char1, char2, char3, char4, img_stall]
         #print("Plate parsed!")
     
     
@@ -260,7 +285,7 @@ class LicenseProcessor:
         # (thresh, img_bw) = cv2.threshold(img_gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU) #| cv2.THRESH_OTSU after cv2.thresh_binary
 
         height, width, channels = img.shape
-        letter_top, letter_bot = 600, rows
+        letter_top, letter_bot = 600, 700
         letter_height = letter_bot - letter_top
         letter_width = 100
 
@@ -315,7 +340,11 @@ class LicenseProcessor:
                 return chr(n + 55)
         
         cnn = self.__cnn_letters if letters else self.__cnn_digits
+
+        # print(cropped_chars.shape)
         
+        cropped_chars = cropped_chars.astype(float) / 255
+
         # async workaround
         global sess
         global graph
@@ -323,13 +352,21 @@ class LicenseProcessor:
 
             set_session(sess)
 
+            # print(cropped_chars[:,:,:,np.newaxis].shape)
+
             hots = cnn.predict(cropped_chars[:,:,:,np.newaxis])
 
             nums = np.argmax(hots, axis=1).tolist()
 
             chars = list(map(lambda n: num_to_char(n), nums))
 
-            return chars
+            # chars + confidences zip
+
+            confidence = []
+            for i in range(len(nums)):
+                confidence.append(hots[i, nums[i]])
+
+            return list(zip(chars, confidence))
         
         # TODO: default None return?
         

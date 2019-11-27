@@ -240,7 +240,7 @@ class AdeeptAWRController:
 
             self.pid_bias = 71
 
-            if rospy.get_time() - self.__timer > 4.0:
+            if rospy.get_time() - self.__timer > 3.5:
                 print("FOO")
                 self.__state_counter += 1
                 self.reinit_state()
@@ -447,8 +447,20 @@ class AdeeptAWRController:
 
             self.pub_vel_msg(0, 0)
 
-            lp_chars = np.array(self.license_processor.parse_plate(self.license_processor.mem()))
-            prediction = np.hstack((self.license_processor.predict_plate(lp_chars[0:2], True), self.license_processor.predict_plate(lp_chars[2:], False)))
+            lp_chars = self.license_processor.parse_plate(self.license_processor.mem())
+
+            pred1 = self.license_processor.predict_plate(np.array(lp_chars[0:2]), True)
+            conf1 = list(zip(*pred1))[1]
+            pred1 = list(zip(*pred1))[0]
+
+            pred2 = self.license_processor.predict_plate(np.array(lp_chars[2:]), False)
+            conf2 = list(zip(*pred2))[1]
+            pred2 = list(zip(*pred2))[0]
+
+            prediction = np.hstack((pred1, pred2))
+            confidence = np.hstack((conf1, conf2))
+
+            conf_val = np.min(confidence)
 
             # print(prediction)
 
@@ -458,11 +470,22 @@ class AdeeptAWRController:
                     and ord(pred[2]) >= 48 and ord(pred[2]) <= 57 and ord(pred[1]) >= 65 and ord(pred[1]) <= 90 \
                     and ord(pred[0]) >= 65 and ord(pred[0]) <= 90
 
-            if valid_prediction(prediction): #and not self.license_spotted[int(prediction[4]) - 1]:
-                self.plate_pub.publish(String("LM&JW,teampw,{0},{1}{2}{3}{4}".format(
-                    prediction[4], prediction[0], prediction[1], prediction[2], prediction[3])))
-                self.license_spotted[int(prediction[4])] = True
+            
+
+            if valid_prediction(prediction):
+
                 self.last_lp = int(prediction[4])
+
+                if (not self.license_spotted[int(prediction[4]) - 1]) or conf_val >= self.license_spotted[int(prediction[4]) - 1]:
+
+                    self.license_spotted[int(prediction[4]) - 1] = conf_val
+
+                    self.plate_pub.publish(String("LM&JW,teampw,{0},{1}{2}{3}{4}".format(
+                            prediction[4], prediction[0], prediction[1], prediction[2], prediction[3])))
+                    
+                    print("=======")
+                    print(prediction)
+                    print(confidence)
             
             self.inner_turn_timer = rospy.get_time()
             
