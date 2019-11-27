@@ -251,7 +251,7 @@ class AdeeptAWRController:
         
         elif self.__state_counter == 4:
 
-            if self.truck_safe(img):
+            if self.truck_safe(img, 8000):
                 self.__state_counter += 1
                 self.reinit_state()
                 return
@@ -260,7 +260,10 @@ class AdeeptAWRController:
         
         elif self.__state_counter == 5:
 
-            if rospy.get_time() - self.__timer > 2.0:
+            if not self.truck_safe(img, 8000):
+                self.__timer = rospy.get_time()
+
+            if rospy.get_time() - self.__timer > 8.0:
                 self.__state_counter += 1
                 self.reinit_state()
                 return
@@ -555,7 +558,7 @@ class AdeeptAWRController:
     def turn_complete(self):
         return rospy.get_time() - self.turn_timer >= self.__TURN_TIME
     
-    def truck_safe(self, img):
+    def truck_safe(self, img, tol):
 
         def truck_gray_filter(im):
 
@@ -567,7 +570,7 @@ class AdeeptAWRController:
 
         gray_filtered = truck_gray_filter(img[int(self.__HEIGHT_CENTRE):]) # check bottom half of frame
         count = np.sum(gray_filtered)
-        return count <= 8000
+        return count <= tol
 
         
 if __name__ == '__main__':
