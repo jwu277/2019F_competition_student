@@ -260,6 +260,15 @@ class AdeeptAWRController:
         
         elif self.__state_counter == 5:
 
+            if rospy.get_time() - self.__timer > 2.0:
+                self.__state_counter += 1
+                self.reinit_state()
+                return
+
+            self.pub_vel_msg(0, 0)
+        
+        elif self.__state_counter == 6:
+
             if self.white_border(img):
                 self.__state_counter += 1
                 self.reinit_state()
@@ -268,7 +277,7 @@ class AdeeptAWRController:
             
             self.drive(img)
         
-        elif self.__state_counter == 6:
+        elif self.__state_counter == 7:
 
             if self.turn_complete():
                 self.__state_counter += 1
@@ -277,7 +286,7 @@ class AdeeptAWRController:
 
             self.turn()
         
-        elif self.__state_counter == 7:
+        elif self.__state_counter == 8:
 
             # inner ring driving
 

@@ -28,9 +28,9 @@ class LicenseProcessor:
         self.__LP_RECOG_GRAY_THRESH = 0.7 # proportion of adjacent grayscale pixels needed
         self.__GRAYSCALE_DELTA_THRESH = 0x00 # max difference in BGR values for grayscale pixels
 
-        self.__cnn_letters = tf.keras.models.load_model(self.__path + '/sorter_50x50_wack5.h5', custom_objects={
+        self.__cnn_letters = tf.keras.models.load_model(self.__path + '/sorter_chars_HUGE.h5', custom_objects={
             'RMSprop': lambda **kwargs: hvd.DistributedOptimizer(keras.optimizers.RMSprop(**kwargs))})
-        self.__cnn_digits= tf.keras.models.load_model(self.__path + '/sorter50x50_nums.h5', custom_objects={
+        self.__cnn_digits= tf.keras.models.load_model(self.__path + '/sorter_timetrials.h5', custom_objects={
             'RMSprop': lambda **kwargs: hvd.DistributedOptimizer(keras.optimizers.RMSprop(**kwargs))})
 
         self.__cnn_letters._make_predict_function()
@@ -243,34 +243,38 @@ class LicenseProcessor:
         # char4 = img_gray[letter_top:letter_bot, 540:540 + letter_width]
 
         # resize
-        char1 = img_gray[letter_top:700, 60:60 + letter_width]
-        char2 = img_gray[letter_top:700, 185:185 + letter_width]
-        char3 = img_gray[letter_top:700, 415:415 + letter_width]   
-        char4 = img_gray[letter_top:700, 540:540 + letter_width]
-        char1 = cv2.resize(char1, (50, 50))
-        char2 = cv2.resize(char2, (50, 50))
-        char3 = cv2.resize(char3, (50, 50))
-        char4 = cv2.resize(char4, (50, 50))
+        char1 = img_gray[letter_top:letter_bot, 60:60 + letter_width]
+        char2 = img_gray[letter_top:letter_bot, 185:185 + letter_width]
+        char3 = img_gray[letter_top:letter_bot, 415:415 + letter_width]   
+        char4 = img_gray[letter_top:letter_bot, 540:540 + letter_width]
+        # char1 = cv2.resize(char1, (50, 50))
+        # char2 = cv2.resize(char2, (50, 50))
+        # char3 = cv2.resize(char3, (50, 50))
+        # char4 = cv2.resize(char4, (50, 50))
 
         #crop the parking stall number
         img_stall = img_gray[300:500, 350:700] #700 
-        img_stall = cv2.resize(img_stall,(50,50)) #keep the license plate square to prevent stretching
+        img_stall = cv2.resize(img_stall,(letter_width,letter_width)) #keep the license plate square to prevent stretching
         #pad the image so it is the same size as all the other images, this is done by making a gray array of the correct size and adding the values onto the image
-        # img_stall_new = 90 * np.ones((letter_height,letter_width))
-        # img_stall_new[:100] = img_stall
+        img_stall_new = 90 * np.ones((letter_height,letter_width))
+        img_stall_new[:100] = img_stall
 
         # save chars (temp/debugging)
-        path = self.__path + "/cropped_chars/"
+        # path = self.__path + "/cropped_chars/"
         # cv2.imwrite(path + "char_" + str(self.__save_char_counter) + "_c1.png", char1temp)
         # cv2.imwrite(path + "char_" + str(self.__save_char_counter) + "_c2.png", char2temp)
         # cv2.imwrite(path + "_" + str(self.__savemem_counter) + "_c3.png", char3)
         # cv2.imwrite(path + "_" + str(self.__savemem_counter) + "_c4.png", char4)
-        cv2.imwrite(path + "_" + str(self.__savemem_counter) + "_stall.png", img_stall)
+        # cv2.imwrite(path + "_" + str(self.__savemem_counter) + "_stall.png", img_stall)
         self.__save_char_counter += 1
 
         # print(char1.shape)
+
+        # print(char3.shape)
+        # print(char4.shape)
+        # print(img_stall_new.shape)
         
-        return [char1, char2, char3, char4, img_stall]
+        return [char1, char2, char3, char4, img_stall_new]
         #print("Plate parsed!")
     
     
