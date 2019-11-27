@@ -28,7 +28,7 @@ class LicenseProcessor:
         self.__LP_RECOG_GRAY_THRESH = 0.7 # proportion of adjacent grayscale pixels needed
         self.__GRAYSCALE_DELTA_THRESH = 0x00 # max difference in BGR values for grayscale pixels
 
-        self.__cnn_letters = tf.keras.models.load_model(self.__path + '/sorter_chars_large.h5', custom_objects={
+        self.__cnn_letters = tf.keras.models.load_model(self.__path + '/sorter_chars_layers.h5', custom_objects={
             'RMSprop': lambda **kwargs: hvd.DistributedOptimizer(keras.optimizers.RMSprop(**kwargs))})
         self.__cnn_digits= tf.keras.models.load_model(self.__path + '/sorter_timetrials.h5', custom_objects={
             'RMSprop': lambda **kwargs: hvd.DistributedOptimizer(keras.optimizers.RMSprop(**kwargs))})

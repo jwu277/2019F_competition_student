@@ -48,6 +48,8 @@ class AdeeptAWRController:
 
         self.license_spotted = [False] * 8
 
+        self.pid_bias = 0 # bias setpoint by certain amount
+
     
     def init_constants(self):
 
@@ -55,6 +57,8 @@ class AdeeptAWRController:
         # y is inverted
         self.__IMG_WIDTH = 1280
         self.__IMG_HEIGHT = 720
+
+        self.__HEIGHT_CENTRE = (self.__IMG_HEIGHT - 1) / 2.0
 
         # drive
         # current setup: use bottom row of image
@@ -95,11 +99,18 @@ class AdeeptAWRController:
         self.__WHITE_BORDER_THRESH = 1000 # number of pixels needed
 
         # turn complete
-        self.__TURN_TIME = 3.0
+        self.__TURN_TIME = 2.7
 
         # don't drive when cnn is rendering
         # self.__CNN_PAUSE_TIME = 1.0
         # self.__CNN_DEBOUNCE_TIME = 5.0
+
+        self.__PARKING_BLUE_PX_COUNT_THRESH = 60000 # number of parking blue pixels in frame
+        self.__INNER_TURN_DELAY = 2.5
+        # self.__INNER_TURN_GRAY_THRESH = 180000 # currently confined to bottom-left corner
+
+        self.__TRUCK_GRAY_LOWER_THRESH = 0x70
+        self.__TRUCK_GRAY_UPPER_THRESH = 0xD0
 
 
     def pub_vel_msg(self, lin, ang):
@@ -134,6 +145,10 @@ class AdeeptAWRController:
         # wait
         self.waiting = True
 
+        # turn into inner ring timer
+        self.inner_turn_timer = rospy.get_time()
+        self.last_lp = 0
+
         # self.cnn_waiting = False
         # self.cnn_wait_timer = rospy.get_time()
         # self.cnn_debounce_timer = rospy.get_time()
@@ -148,7 +163,13 @@ class AdeeptAWRController:
         cv2.imshow('image', img)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
-        
+
+    # def gray_filter(self, img):
+    #     s = np.sum(img, axis=2)
+    #     return np.logical_and(s >= 3 * self.__GRAY_LOWER, s <= 3 * self.__GRAY_UPPER)
+
+    def parking_blue_filter(self, img):
+        return np.logical_and(np.logical_and(img[:,:,1] <= 0x18, img[:,:,2] <= 0x18), img[:,:,0] >= 0x60)
 
     def callback(self, msg):
 
@@ -166,13 +187,13 @@ class AdeeptAWRController:
         # TODO: remove initial wait (kept rn for testing)
         if self.__state_counter == -1:
 
-            if rospy.get_time() - self.__timer >= 1.0:
+            if rospy.get_time() - self.__timer >= 0.1:
                 self.__state_counter += 1
                 self.reinit_state()
+                self.plate_pub.publish(String("LM&JW,teampw,0,AB01")) # Publish initial msg
                 return
         # drive out of starting position into outer loop
         elif self.__state_counter == 0:
-
             if self.white_border(img):
                 self.__state_counter += 1
                 self.reinit_state()
@@ -191,7 +212,74 @@ class AdeeptAWRController:
         # drive around outer loop
         elif self.__state_counter == 2:
 
-            # TODO: add termination condition
+            # Turn into inner ring when ready
+            # 1 is the last license plate before turning into inner ring
+            if self.last_lp == 1:# and sum(self.license_spotted) >= 6:
+                if np.sum(self.parking_blue_filter(img)) >= self.__PARKING_BLUE_PX_COUNT_THRESH:
+                    self.inner_turn_timer = rospy.get_time()
+                elif rospy.get_time() - self.inner_turn_timer > self.__INNER_TURN_DELAY:
+                # elif np.sum(self.gray_filter(img[int(self.__HEIGHT_CENTRE):,:int(self.__WIDTH_CENTRE)])) >= self.__INNER_TURN_GRAY_THRESH:
+                    # check botom-right corner
+                    self.__state_counter += 1
+                    self.reinit_state()
+                    print("MAMA")
+                    return
+
+            self.drive(img)
+        
+        # elif self.__state_counter == 3:
+        #     # drive up a bit
+        #     if rospy.get_time() - self.__timer >= 0.1:
+        #         self.__state_counter += 1
+        #         self.reinit_state()
+        #         return
+
+        #     self.drive(img)
+
+        elif self.__state_counter == 3:
+
+            self.pid_bias = 71
+
+            if rospy.get_time() - self.__timer > 4.0:
+                print("FOO")
+                self.__state_counter += 1
+                self.reinit_state()
+                self.pid_bias = 0
+                return
+
+            self.drive(img)
+        
+        elif self.__state_counter == 4:
+
+            if self.truck_safe(img):
+                self.__state_counter += 1
+                self.reinit_state()
+                return
+
+            self.pub_vel_msg(0, 0)
+        
+        elif self.__state_counter == 5:
+
+            if self.white_border(img):
+                self.__state_counter += 1
+                self.reinit_state()
+                self.__TURN_TIME = 1.0
+                return
+            
+            self.drive(img)
+        
+        elif self.__state_counter == 6:
+
+            if self.turn_complete():
+                self.__state_counter += 1
+                self.reinit_state()
+                return
+
+            self.turn()
+        
+        elif self.__state_counter == 7:
+
+            # inner ring driving
 
             self.drive(img)
 
@@ -317,10 +405,10 @@ class AdeeptAWRController:
 
         centroid =  ndimage.measurements.center_of_mass(gray_bool)[0] if np.any(gray_bool) else self.__WIDTH_CENTRE
 
-        if centroid - self.__WIDTH_CENTRE < -self.__DRIVE_MARGIN:
+        if centroid - (self.__WIDTH_CENTRE + self.pid_bias) < -self.__DRIVE_MARGIN:
             # steer left (ccw)
             self.pub_vel_msg(0, 1)
-        elif centroid - self.__WIDTH_CENTRE > self.__DRIVE_MARGIN:
+        elif centroid - (self.__WIDTH_CENTRE + self.pid_bias) > self.__DRIVE_MARGIN:
             # steer right (cw)
             self.pub_vel_msg(0, -1)
         else:
@@ -373,7 +461,10 @@ class AdeeptAWRController:
             if valid_prediction(prediction): #and not self.license_spotted[int(prediction[4]) - 1]:
                 self.plate_pub.publish(String("LM&JW,teampw,{0},{1}{2}{3}{4}".format(
                     prediction[4], prediction[0], prediction[1], prediction[2], prediction[3])))
-                # self.license_spotted[int(prediction[4]) - 1] = True
+                self.license_spotted[int(prediction[4])] = True
+                self.last_lp = int(prediction[4])
+            
+            self.inner_turn_timer = rospy.get_time()
             
             # if self.cnn_waiting:
             #     return
@@ -429,20 +520,22 @@ class AdeeptAWRController:
 
         return count >= self.__WHITE_BORDER_THRESH
     
-    def corner(self):
-        return False
-    
-    def pedestrian(self):
-        return False
-    
-    def pickup(self):
-        return False
-    
-    def junction(self):
-        return False
-    
     def turn_complete(self):
         return rospy.get_time() - self.turn_timer >= self.__TURN_TIME
+    
+    def truck_safe(self, img):
+
+        def truck_gray_filter(im):
+
+            def gray_filter(i):
+                return np.logical_and(i[:,:,0] == i[:,:,1], i[:,:,1] == i[:,:,2])
+
+            s = np.sum(im, axis=2)
+            return np.logical_and(np.logical_and(s >= 3 * self.__TRUCK_GRAY_LOWER_THRESH, s <= 3 * self.__TRUCK_GRAY_UPPER_THRESH), gray_filter(im))
+
+        gray_filtered = truck_gray_filter(img[int(self.__HEIGHT_CENTRE):]) # check bottom half of frame
+        count = np.sum(gray_filtered)
+        return count <= 8000
 
         
 if __name__ == '__main__':
