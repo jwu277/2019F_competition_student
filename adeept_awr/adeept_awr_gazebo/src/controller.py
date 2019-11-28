@@ -263,7 +263,7 @@ class AdeeptAWRController:
             if not self.truck_safe(img, 8000):
                 self.__timer = rospy.get_time()
 
-            if rospy.get_time() - self.__timer > 8.0:
+            if rospy.get_time() - self.__timer > 4.0:
                 self.__state_counter += 1
                 self.reinit_state()
                 return
